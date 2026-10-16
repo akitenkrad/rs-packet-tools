@@ -9,3 +9,14 @@ authors.workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+flate2.workspace = true
+memmap2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

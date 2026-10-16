@@ -6,7 +6,7 @@
 
 `packet-tools` is a Rust library and CLI for fast offline analysis of PCAP and pcapng captures. It is meant as a fast alternative to Scapy for research workloads such as intrusion-detection datasets: it extracts per-packet fields, builds bidirectional flows with configurable termination rules and flow features, reassembles IP fragments and TCP streams, parses application-layer protocols (DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, Telnet), and writes the results to Parquet or CSV.
 
-> **Status: early development (M0).** The workspace, test fixtures, CI and benchmarks are in place. The analysis features are being implemented milestone by milestone. See [Architecture](docs/architecture.md) for the plan.
+> **Status: early development (M1).** Reading PCAP, pcapng and gzip-compressed captures works (`packet_tools::capture` and `packet-tools validate`). Dissection, flows and application parsing are being implemented milestone by milestone. See [Architecture](docs/architecture.md) for the plan.
 
 ## Install
 
@@ -21,6 +21,8 @@ cargo run -p packet-tools -- --version
 
 ## Documentation
 
+- [CLI](docs/cli.md): the `packet-tools` command
+- [Library](docs/library.md): reading captures from Rust
 - [Architecture](docs/architecture.md): crate layout, design principles and milestones
 - [Development](docs/development.md): tests, synthetic fixtures, CI and benchmarks
 

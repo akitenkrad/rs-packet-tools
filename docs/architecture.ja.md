@@ -61,7 +61,7 @@ capture -> dissect -> flow ----------------------> export
 | | 範囲 |
 |---|---|
 | M0 | workspace，合成キャプチャ，CI，ベンチマーク（完了） |
-| M1 | `packet-tools-capture`: PCAP，pcapng，gzip，メモリマップでの読み込み |
+| M1 | `packet-tools-capture`: PCAP，pcapng，gzip の読み込み（完了） |
 | M2 | `packet-tools-dissect` と `packets` 表 |
 | M3 | `packet-tools-flow` と `flows` 表 |
 | M4 | `packet-tools-reassembly` |

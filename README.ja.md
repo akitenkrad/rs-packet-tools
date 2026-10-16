@@ -6,7 +6,7 @@
 
 `packet-tools` は，PCAP と pcapng のキャプチャをオフラインで高速に解析する Rust のライブラリと CLI です．侵入検知データセットのような研究用途で，Scapy の代わりに使える速さを目指しています．パケット単位の項目の取り出し，終了条件を選べる双方向フローとフロー特徴量の計算，IP フラグメントと TCP ストリームの再構成，アプリ層のプロトコル（DNS，HTTP/1.x，TLS，FTP，SSH，SMTP，Telnet）の解析を行い，結果を Parquet か CSV に書き出します．
 
-> **状況: 開発の初期段階（M0）．** workspace，試験用の合成キャプチャ，CI，ベンチマークが揃った段階です．解析機能はマイルストーンごとに実装していきます．計画は[アーキテクチャ](docs/architecture.ja.md)を見てください．
+> **状況: 開発の初期段階（M1）．** PCAP，pcapng，gzip で圧縮したキャプチャの読み込みができます（`packet_tools::capture` と `packet-tools validate`）．層の解析，フロー，アプリ層の解析はマイルストーンごとに実装していきます．計画は[アーキテクチャ](docs/architecture.ja.md)を見てください．
 
 ## インストール
 
@@ -21,6 +21,8 @@ cargo run -p packet-tools -- --version
 
 ## ドキュメント
 
+- [CLI](docs/cli.ja.md): `packet-tools` コマンド
+- [ライブラリ](docs/library.ja.md): Rust からキャプチャを読む
 - [アーキテクチャ](docs/architecture.ja.md): crate の構成，設計の方針，マイルストーン
 - [開発](docs/development.ja.md): 試験，合成キャプチャ，CI，ベンチマーク
 

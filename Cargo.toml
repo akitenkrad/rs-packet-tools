@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/packet-tools",
+    "crates/packet-tools-capture",
+    "crates/packet-tools-dissect",
+    "crates/packet-tools-flow",
+    "crates/packet-tools-reassembly",
+    "crates/packet-tools-app",
+    "crates/packet-tools-export",
+    "crates/packet-tools-fixtures",
+    "bench/rsbench",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/akitenkrad/rs-packet-tools"
+authors = ["akitenkrad"]
+
+[workspace.dependencies]
+ahash = "0.8.12"
+clap = { version = "4.5.50", features = ["derive"] }
+etherparse = "0.21.0"
+flate2 = "1.1.5"
+pcap-file = "2.0.0"
+pcap-parser = "0.17.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+tempfile = "3.23.0"

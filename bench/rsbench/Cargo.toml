@@ -1,0 +1,15 @@
+[package]
+name = "rsbench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ahash.workspace = true
+etherparse.workspace = true
+flate2.workspace = true
+pcap-file.workspace = true

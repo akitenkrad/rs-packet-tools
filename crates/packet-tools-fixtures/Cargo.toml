@@ -1,0 +1,29 @@
+[package]
+name = "packet-tools-fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+clap.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+flate2.workspace = true
+pcap-file.workspace = true
+pcap-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+
+[[bin]]
+name = "packet-tools-fixtures"
+path = "src/main.rs"

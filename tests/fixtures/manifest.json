@@ -1,0 +1,1234 @@
+{
+  "files": {
+    "be_nsec.pcap": {
+      "format": "pcap",
+      "endianness": "big",
+      "ts_resolution": "nanosecond",
+      "compressed": false,
+      "packet_count": 19,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        }
+      ],
+      "sha256": "14ecf285eca5b31f66ec7d9184537a0c54a2ef49b3d200235258918302fa5e66"
+    },
+    "be_usec.pcap": {
+      "format": "pcap",
+      "endianness": "big",
+      "ts_resolution": "microsecond",
+      "compressed": false,
+      "packet_count": 19,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        }
+      ],
+      "sha256": "562edd140dd11e404840071e7138d2bc594b3a1042cc9a4fe86ba604d30fb9fc"
+    },
+    "le_nsec.pcap": {
+      "format": "pcap",
+      "endianness": "little",
+      "ts_resolution": "nanosecond",
+      "compressed": false,
+      "packet_count": 19,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        }
+      ],
+      "sha256": "d05fb61b1195b1bc8d4a66d778da275754a9be13e9b1405116ebf86d22957591"
+    },
+    "le_usec.pcap": {
+      "format": "pcap",
+      "endianness": "little",
+      "ts_resolution": "microsecond",
+      "compressed": false,
+      "packet_count": 19,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        }
+      ],
+      "sha256": "600b3db8b1c474d491a579d2667a22b2fddb0d50655aa869e6f2ca33ee6ec7b8"
+    },
+    "le_usec.pcap.gz": {
+      "format": "pcap",
+      "endianness": "little",
+      "ts_resolution": "microsecond",
+      "compressed": true,
+      "packet_count": 19,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        }
+      ],
+      "sha256": "6b8799233b55a963105b6f52cbb503259e1e5f8b820b2c0b6d16b134af83a90a"
+    },
+    "multi_iface.pcapng": {
+      "format": "pcapng",
+      "endianness": "little",
+      "ts_resolution": "per-interface",
+      "compressed": false,
+      "packet_count": 22,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "1: TCP ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 118,
+          "origlen": 118,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 GET request"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 113,
+          "origlen": 113,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "2: HTTP/1.1 200 response"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client FIN-ACK"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000007000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: server FIN-ACK"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000008000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "3: client final ACK"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000009000000,
+          "caplen": 72,
+          "origlen": 72,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000010000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000011000000,
+          "caplen": 70,
+          "origlen": 70,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "5: IPv6 UDP packet"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000012000000,
+          "caplen": 42,
+          "origlen": 42,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 255,
+          "description": "6: ARP request"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000000013000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "7: 802.1Q IPv4 UDP frame"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000000014000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 1 of 2"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000000015000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "8: IPv4 fragment 2 of 2"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000000016000000,
+          "caplen": 50,
+          "origlen": 138,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "9: snaplen-truncated IPv4 UDP packet"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000000017000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "10: Ethernet-padded IPv4 UDP frame"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000000016999000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "11: timestamp moves backward by 1 microsecond"
+        },
+        {
+          "index": 19,
+          "ts_ns": 1700000000030000123,
+          "caplen": 58,
+          "origlen": 58,
+          "linktype": 101,
+          "interface": 1,
+          "first_byte": 69,
+          "description": "4: DNS A query"
+        },
+        {
+          "index": 20,
+          "ts_ns": 1700000000031000124,
+          "caplen": 74,
+          "origlen": 74,
+          "linktype": 101,
+          "interface": 1,
+          "first_byte": 69,
+          "description": "4: DNS A response"
+        },
+        {
+          "index": 21,
+          "ts_ns": 1700000000032000125,
+          "caplen": 36,
+          "origlen": 36,
+          "linktype": 101,
+          "interface": 1,
+          "first_byte": 69,
+          "description": "8: IPv4 fragment 1 of 2"
+        }
+      ],
+      "sha256": "177d36c31dd0941b9f014d27ef7b6c5526408794a0812262228062ca52add775"
+    }
+  }
+}

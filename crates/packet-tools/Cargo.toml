@@ -1,0 +1,24 @@
+[package]
+name = "packet-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap.workspace = true
+packet-tools-app = { path = "../packet-tools-app" }
+packet-tools-capture = { path = "../packet-tools-capture" }
+packet-tools-dissect = { path = "../packet-tools-dissect" }
+packet-tools-export = { path = "../packet-tools-export" }
+packet-tools-flow = { path = "../packet-tools-flow" }
+packet-tools-reassembly = { path = "../packet-tools-reassembly" }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "packet-tools"
+path = "src/main.rs"

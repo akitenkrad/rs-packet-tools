@@ -199,6 +199,22 @@ fn generate(out: &Path) -> io::Result<()> {
         ),
     );
 
+    let app = app_packets();
+    let app_bytes = write_pcap(&app, ByteOrder::Little, TimestampResolution::Nanosecond);
+    fs::create_dir_all(out.join("app"))?;
+    write_file(out, "app/scenarios.pcap", &app_bytes)?;
+    files.insert(
+        "app/scenarios.pcap".to_owned(),
+        manifest_file(
+            "pcap",
+            "little",
+            "nanosecond",
+            false,
+            ethernet_manifest(&app),
+            &app_bytes,
+        ),
+    );
+
     let mut manifest = serde_json::to_vec_pretty(&Manifest { files })
         .map_err(|error| io::Error::other(error.to_string()))?;
     manifest.push(b'\n');
@@ -1484,6 +1500,416 @@ fn reassembly_packets() -> Vec<Packet> {
     let last = packets.len() - 1;
     packets[last].ts_ns = packets[last - 1].ts_ns + 61_000_000_000;
     packets
+}
+
+fn app_packets() -> Vec<Packet> {
+    let client = [10, 20, 0, 1];
+    let server = [10, 20, 0, 2];
+    let client_mac = [0x02, 0, 0, 0, 3, 1];
+    let server_mac = [0x02, 0, 0, 0, 3, 2];
+    let base = BASE_SECONDS * 1_000_000_000 + 400_000_000_000;
+    let mut packets = Vec::new();
+    let mut tcp = |c2s: bool,
+                   client_port: u16,
+                   server_port: u16,
+                   seq: u32,
+                   payload: &[u8],
+                   description: &'static str| {
+        let (src_ip, dst_ip, src_mac, dst_mac, src_port, dst_port) = if c2s {
+            (
+                client,
+                server,
+                client_mac,
+                server_mac,
+                client_port,
+                server_port,
+            )
+        } else {
+            (
+                server,
+                client,
+                server_mac,
+                client_mac,
+                server_port,
+                client_port,
+            )
+        };
+        let data = ethernet(
+            dst_mac,
+            src_mac,
+            0x0800,
+            ipv4(
+                src_ip,
+                dst_ip,
+                6,
+                client_port,
+                0x4000,
+                tcp_segment(src_ip, dst_ip, src_port, dst_port, seq, 0, 0x18, payload),
+            ),
+        );
+        packets.push(Packet {
+            ts_ns: base + packets.len() as u64 * 1_000_000,
+            origlen: data.len() as u32,
+            data,
+            description,
+        });
+    };
+
+    let http_request = b"HEAD /head HTTP/1.1\r\nHost: nonstandard.test\r\nUser-Agent: fixture\r\n\r\nGET /cached HTTP/1.1\r\nHost: nonstandard.test\r\n\r\nPOST /chunk HTTP/1.1\r\nHost: nonstandard.test\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ntest\r\n0\r\n\r\n";
+    tcp(
+        true,
+        40_000,
+        18_080,
+        1_000,
+        http_request,
+        "app: pipelined HTTP requests on nonstandard port",
+    );
+    tcp(false, 40_000, 18_080, 9_000, b"HTTP/1.1 200 OK\r\nContent-Length: 99\r\n\r\nHTTP/1.1 304 Not Modified\r\n\r\nHTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nOK\r\n0\r\n\r\n", "app: HEAD, 304, and chunked HTTP responses");
+
+    tcp(
+        true,
+        40_008,
+        18_081,
+        1_000,
+        b"\0POST /after-keepalive HTTP/1.1\r\nHost: resync.test\r\nContent-Length: 0\r\n\r\n",
+        "app: HTTP request after a leading keepalive byte",
+    );
+
+    let body_chunk = vec![b'x'; 16_384];
+    for part in 0..4 {
+        tcp(
+            false,
+            40_009,
+            18_082,
+            20_000 + part * body_chunk.len() as u32,
+            &body_chunk,
+            "app: midstream HTTP response body reaches one-direction probe limit",
+        );
+    }
+    tcp(
+        true,
+        40_009,
+        18_082,
+        1_000,
+        b"GET /after-body HTTP/1.1\r\nHost: later.test\r\n\r\n",
+        "app: HTTP request identifies flow after opposite probe limit",
+    );
+
+    let hello = fixture_client_hello();
+    let split = 17;
+    tcp(
+        true,
+        40_001,
+        444,
+        2_000,
+        &hello[..split],
+        "app: split TLS ClientHello first packet",
+    );
+    tcp(
+        true,
+        40_001,
+        444,
+        2_000 + split as u32,
+        &hello[split..],
+        "app: split TLS ClientHello second packet",
+    );
+    let mut heartbeats = vec![24, 3, 2, 0, 8, 1, 0, 10, b'a', b'b', b'c', b'd', b'e'];
+    heartbeats.extend_from_slice(&[24, 3, 2, 0, 19, 2, 0, 0]);
+    heartbeats.extend_from_slice(&[0; 16]);
+    tcp(
+        true,
+        40_001,
+        444,
+        2_000 + hello.len() as u32,
+        &heartbeats,
+        "app: two TLS Heartbeat records in one packet",
+    );
+
+    let server_hello = fixture_server_hello_without_extensions();
+    tcp(
+        false,
+        40_010,
+        445,
+        30_000,
+        &server_hello,
+        "app: TLS ServerHello without extensions",
+    );
+    let malformed_hello = [22, 3, 1, 0, 8, 2, 0, 0, 4, 3, 1, 0, 0];
+    tcp(
+        false,
+        40_010,
+        445,
+        30_000 + server_hello.len() as u32,
+        &malformed_hello,
+        "app: malformed TLS ServerHello remains visible",
+    );
+
+    tcp(
+        true,
+        40_002,
+        21,
+        4_000,
+        b"USER alice\r\nPASS secret\r\n",
+        "app: FTP login commands",
+    );
+    tcp(
+        false,
+        40_002,
+        21,
+        3_000,
+        b"220-first line\r\nsecond line\r\n220 ready\r\n",
+        "app: FTP multiline response",
+    );
+    tcp(
+        false,
+        40_002,
+        21,
+        3_040,
+        b"230 logged in\r\n",
+        "app: FTP successful login",
+    );
+
+    let mut ssh = b"SSH-2.0-OpenSSH_9.9 fixture\r\n".to_vec();
+    ssh.extend_from_slice(&fixture_ssh_kexinit());
+    tcp(
+        true,
+        40_003,
+        22,
+        5_000,
+        &ssh,
+        "app: SSH identification and KEXINIT",
+    );
+
+    tcp(true, 40_004, 25, 7_000, b"EHLO fixture\r\nMAIL FROM:<a@example.test>\r\nRCPT TO:<b@example.test>\r\nDATA\r\nhello\r\n..dot\r\n.\r\nQUIT\r\n", "app: SMTP commands and DATA");
+    tcp(
+        false,
+        40_004,
+        25,
+        6_000,
+        b"220 mail.fixture ESMTP\r\n",
+        "app: SMTP greeting",
+    );
+
+    for (seq, byte) in (8_000..).zip(b"login\r\n") {
+        tcp(
+            true,
+            40_005,
+            23,
+            seq,
+            &[*byte],
+            "app: Telnet character-at-a-time input",
+        );
+    }
+    tcp(
+        false,
+        40_005,
+        23,
+        9_000,
+        &[255, 251, 1],
+        "app: Telnet IAC WILL negotiation",
+    );
+
+    let dns = dns_response();
+    let query_tcp = dns_query();
+    let mut tcp_query = Vec::new();
+    tcp_query.extend_from_slice(&(query_tcp.len() as u16).to_be_bytes());
+    tcp_query.extend_from_slice(&query_tcp);
+    tcp(
+        true,
+        40_006,
+        53,
+        1_000,
+        &tcp_query,
+        "app: length-prefixed TCP DNS query",
+    );
+    let mut tcp_dns = Vec::new();
+    tcp_dns.extend_from_slice(&(dns.len() as u16).to_be_bytes());
+    tcp_dns.extend_from_slice(&dns);
+    tcp(
+        false,
+        40_006,
+        53,
+        10_000,
+        &tcp_dns,
+        "app: length-prefixed TCP DNS response",
+    );
+    tcp(
+        true,
+        40_007,
+        21,
+        11_000,
+        b"USER before-gap\r\n",
+        "app: FTP before TCP gap",
+    );
+    tcp(
+        true,
+        40_007,
+        21,
+        11_030,
+        b"discarded-tail\r\nUSER after-gap\r\n",
+        "app: FTP resumes after TCP gap",
+    );
+    drop(tcp);
+
+    let udp = udp_datagram(server, client, 53, 53_000, &dns);
+    let data = ethernet(
+        client_mac,
+        server_mac,
+        0x0800,
+        ipv4(server, client, 17, 0x9000, 0x4000, udp),
+    );
+    packets.push(Packet {
+        ts_ns: base + packets.len() as u64 * 1_000_000,
+        origlen: data.len() as u32,
+        data,
+        description: "app: compressed UDP DNS response",
+    });
+    let mut loop_dns = vec![
+        0x44, 0x44, 0x01, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xc0, 0x0c, 0, 1, 0, 1,
+    ];
+    let udp = udp_datagram(client, server, 53_001, 53, &loop_dns);
+    let data = ethernet(
+        server_mac,
+        client_mac,
+        0x0800,
+        ipv4(client, server, 17, 0x9001, 0x4000, udp),
+    );
+    packets.push(Packet {
+        ts_ns: base + packets.len() as u64 * 1_000_000,
+        origlen: data.len() as u32,
+        data,
+        description: "app: DNS compression pointer loop",
+    });
+
+    let query = dns_query();
+    let fragmented = udp_datagram(client, server, 53_002, 53, &query);
+    let first = ethernet(
+        server_mac,
+        client_mac,
+        0x0800,
+        ipv4(
+            client,
+            server,
+            17,
+            0x9002,
+            0x2000,
+            fragmented[..24].to_vec(),
+        ),
+    );
+    let second = ethernet(
+        server_mac,
+        client_mac,
+        0x0800,
+        ipv4(client, server, 17, 0x9002, 3, fragmented[24..].to_vec()),
+    );
+    for (data, description) in [
+        (first, "app: fragmented UDP DNS first"),
+        (second, "app: fragmented UDP DNS final"),
+    ] {
+        packets.push(Packet {
+            ts_ns: base + packets.len() as u64 * 1_000_000,
+            origlen: data.len() as u32,
+            data,
+            description,
+        });
+    }
+
+    loop_dns.clear();
+    packets
+}
+
+fn fixture_client_hello() -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(&0x0303u16.to_be_bytes());
+    body.extend_from_slice(&[0x11; 32]);
+    body.push(0);
+    body.extend_from_slice(&6u16.to_be_bytes());
+    body.extend_from_slice(&[0x13, 0x01, 0x13, 0x02, 0xc0, 0x2f]);
+    body.push(1);
+    body.push(0);
+    let mut ext = Vec::new();
+    let host = b"fixture.test";
+    let mut sni = Vec::new();
+    sni.extend_from_slice(&((host.len() + 3) as u16).to_be_bytes());
+    sni.push(0);
+    sni.extend_from_slice(&(host.len() as u16).to_be_bytes());
+    sni.extend_from_slice(host);
+    push_tls_extension(&mut ext, 0, &sni);
+    push_tls_extension(&mut ext, 43, &[4, 3, 4, 3, 3]);
+    push_tls_extension(&mut ext, 16, &[0, 3, 2, b'h', b'2']);
+    push_tls_extension(&mut ext, 10, &[0, 4, 0, 29, 0, 23]);
+    push_tls_extension(&mut ext, 11, &[1, 0]);
+    push_tls_extension(&mut ext, 13, &[0, 4, 4, 3, 8, 4]);
+    body.extend_from_slice(&(ext.len() as u16).to_be_bytes());
+    body.extend_from_slice(&ext);
+    let mut handshake = vec![
+        1,
+        ((body.len() >> 16) & 0xff) as u8,
+        ((body.len() >> 8) & 0xff) as u8,
+        (body.len() & 0xff) as u8,
+    ];
+    handshake.extend_from_slice(&body);
+    let mut record = vec![22, 3, 1];
+    record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
+    record.extend_from_slice(&handshake);
+    record
+}
+
+fn fixture_server_hello_without_extensions() -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(&0x0301u16.to_be_bytes());
+    body.extend_from_slice(&[0x11; 32]);
+    body.push(32);
+    body.extend_from_slice(&[0x22; 32]);
+    body.extend_from_slice(&0x002fu16.to_be_bytes());
+    body.push(0);
+
+    let mut handshake = vec![2];
+    handshake.extend_from_slice(&[
+        ((body.len() >> 16) & 0xff) as u8,
+        ((body.len() >> 8) & 0xff) as u8,
+        (body.len() & 0xff) as u8,
+    ]);
+    handshake.extend_from_slice(&body);
+
+    let mut record = vec![22, 3, 1];
+    record.extend_from_slice(&(handshake.len() as u16).to_be_bytes());
+    record.extend_from_slice(&handshake);
+    record
+}
+fn push_tls_extension(out: &mut Vec<u8>, kind: u16, value: &[u8]) {
+    out.extend_from_slice(&kind.to_be_bytes());
+    out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+    out.extend_from_slice(value);
+}
+fn fixture_ssh_kexinit() -> Vec<u8> {
+    let mut payload = vec![20];
+    payload.extend_from_slice(&[0; 16]);
+    for value in [
+        "curve25519-sha256",
+        "ssh-ed25519",
+        "aes128-ctr",
+        "aes128-ctr",
+        "hmac-sha2-256",
+        "hmac-sha2-256",
+        "none",
+        "none",
+        "",
+        "",
+    ] {
+        payload.extend_from_slice(&(value.len() as u32).to_be_bytes());
+        payload.extend_from_slice(value.as_bytes());
+    }
+    payload.push(0);
+    payload.extend_from_slice(&0u32.to_be_bytes());
+    let padding = 8 - ((payload.len() + 5) % 8);
+    let packet_len = payload.len() + padding + 1;
+    let mut packet = Vec::new();
+    packet.extend_from_slice(&(packet_len as u32).to_be_bytes());
+    packet.push(padding as u8);
+    packet.extend_from_slice(&payload);
+    packet.resize(packet.len() + padding, 0);
+    packet
 }
 
 #[allow(clippy::too_many_arguments)]

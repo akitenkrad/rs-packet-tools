@@ -154,6 +154,36 @@ The complete schemas and policy-sensitive features are listed in [Flow columns](
 
 `Defragmenter::push(&PacketRecord, &Packet)` accepts decoded packets and returns completed `ReassembledDatagram` values plus typed `IpEvent` values. A completed datagram owns raw-IP bytes suitable for `decode(bytes, LinkType(101), DecodeDepth::L4)`. IPv4 length, fragmentation fields and checksum are repaired; IPv6 keeps extension headers before the Fragment header, removes that header, reconnects the next-header chain and repairs payload length. `DefragConfig` controls policy, VLAN keying, timeout, fragment count, datagram size and memory limits. Fragment payload is stored as sorted, disjoint byte ranges, so an isolated fragment at a large offset does not allocate the missing prefix. `Defragmenter::estimated_memory_bytes` reports the payload capacity plus range metadata charged to the limit.
 
-`TcpReassembler::push` accepts ordinary decoded TCP packets or a decoded completed datagram. Its `TcpItem` output is `Start`, `Data`, `Gap`, `PostClose` or `End`. A `StreamChunk` carries connection ID, direction, zero-based stream position and `Arc<[u8]>`, so an M5 parser can retain a chunk without copying it again. `DeliveryMode::OnAck` is the default; `Immediate` emits each contiguous prefix immediately. TCP payload is stored as sorted, disjoint ranges whose ownership retains the original segment bounds used by the overlap policy. Delivered payload is discarded except for at most the most recent 1 MiB per direction (and no more than half of `stream_memory`) used to detect late conflicting overlaps. This history and range metadata are charged to both memory limits; `TcpReassembler::estimated_memory_bytes` exposes the current estimate. `PostClose` is a statistics-only notification: after an accepted RST or completed two-sided FIN close, the connection remains as a tombstone for `TcpConfig::closing_timeout`; later non-SYN packets are counted but never emitted as `Data`. A SYN without ACK replaces the tombstone, while expiry permits a later packet to start a midstream connection. Zero- or one-byte keepalives at `next_expected - 1` are counted in `DirectionSummary::keepalives` and bypass buffering and overlap detection. Call `finish()` at capture end.
+`TcpReassembler::push` accepts ordinary decoded TCP packets or a decoded completed datagram. Its `TcpItem` output is `Start`, `Data`, `Gap`, `PostClose` or `End`. A `StreamChunk` carries connection ID, direction, zero-based stream position, `Arc<[u8]>`, and source ranges containing the original packet index and timestamp. `source_at` looks up the packet that supplied a byte. `DeliveryMode::OnAck` is the default; `Immediate` emits each contiguous prefix immediately. TCP payload is stored in an ordered range map. Split ranges refer to subranges of a shared segment allocation, so inserting an overlap neither rebuilds the range list nor copies unaffected payload. Delivered payload is discarded except for at most the most recent 1 MiB per direction (and no more than half of `stream_memory`) used to detect late conflicting overlaps. This history, shared payload allocations, and range metadata are charged to both memory limits; `TcpReassembler::estimated_memory_bytes` exposes the current estimate. `PostClose` is a statistics-only notification: after an accepted RST or completed two-sided FIN close, the connection remains as a tombstone for `TcpConfig::closing_timeout`; later non-SYN packets are counted but never emitted as `Data`. A SYN without ACK replaces the tombstone, while expiry permits a later packet to start a midstream connection. Zero- or one-byte keepalives at `next_expected - 1` are counted in `DirectionSummary::keepalives` and bypass buffering and overlap detection. Call `finish()` at capture end.
 
 `FragmentBuffer` and `TcpSegmentBuffer` expose the target-policy buffer state directly for protocol conformance tests. Their `interval_count` and `allocated_bytes` methods expose the range count and estimated heap allocation. `FlowIdentityKey::normalized` and `flow_uid` in `packet_tools::flow` are shared with reassembly, ensuring an `IdleOnly` flow and its TCP connection use the same identifier and first-packet timestamp.
+
+## Application parsing (`packet_tools::app`)
+
+`AppParser` supplies `probe`, `feed`, `gap`, and `finish`. `AppChunk` is a borrowed adapter rather than the owned reassembly chunk, so the same parsers also accept UDP datagrams. `AppAnalyzer` consumes `TcpItem` values, probes each direction independently while retaining at most 64 KiB per direction until one enabled parser returns `Confidence::Certain`, and produces typed `AppEvent` values plus one `DispatchRow` per stream. This lets a later request identify a midstream connection whose opposite direction started inside a response body.
+
+`AppAnalyzer::new` applies a 256 MiB global limit to pending probe data and incomplete parser messages. Use `AppAnalyzer::with_memory_limit(protocols, bytes)` to select another limit, and `estimated_buffer_memory_bytes` to inspect the charged capacity. Under pressure, the oldest undecided stream is abandoned; parsers that can find a later boundary release incomplete data and resynchronize. `DispatchRow::stop_reason` records either action.
+
+`packet_tools_export::app::AppWriter` accepts completed events in multiple batches and keeps Parquet output bounded on long captures. `write_app` remains the one-shot convenience API.
+
+```rust
+use packet_tools::app::{AppAnalyzer, Protocol};
+use packet_tools::reassembly::{TcpConfig, TcpReassembler};
+
+let mut tcp = TcpReassembler::new(TcpConfig::default());
+let mut app = AppAnalyzer::new(Protocol::ALL.to_vec());
+
+// In the capture loop, decode the packet first.
+for item in tcp.push(&record, &packet).items {
+    app.consume(item);
+}
+for item in tcp.finish().items {
+    app.consume(item);
+}
+let output = app.finish();
+for event in output.events {
+    println!("{event:?}");
+}
+```
+
+For fragmented traffic, pass each packet through `Defragmenter` as in the reassembly example, decode every completed datagram as raw IP, and feed that decoded packet to `TcpReassembler`. UDP DNS can be handled by constructing `DnsParser::new(context, false)` and passing one datagram as an `AppChunk`. The CLI implements both paths. See [Application tables](app-tables.md) for event fields.

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -7,16 +7,22 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use packet_tools_app::{
+    AppAnalyzer, AppChunk, AppOutput, AppParser, ByteSource, Confidence, DispatchRow, DnsParser,
+    FlowCtx, Protocol, Transport,
+};
 use packet_tools_capture::{
     Capture, CaptureFormat, CaptureStats, Compression, Container, Endian, OpenOptions, TsResolution,
 };
 use packet_tools_dissect::{DecodeDepth, decode};
+use packet_tools_dissect::{Ipv4View, Ipv6View, Packet, UdpView};
 use packet_tools_export::{
+    app::{AppWriter, write_app},
     flows::{ColumnNames, FlowsWriter},
     packets::{Field, Format, PacketsWriter, parse_fields},
     streams::{DatagramRow, EventRow, StreamRow, write_datagrams, write_events, write_streams},
 };
-use packet_tools_flow::{FlowConfig, FlowTable, Policy, Preset};
+use packet_tools_flow::{FlowConfig, FlowIdentityKey, FlowTable, Policy, Preset, flow_uid};
 use packet_tools_reassembly::{
     CloseReason, DefragConfig, Defragmenter, DeliveryMode, Direction, DirectionSummary, IpPolicy,
     RetainedSide, TcpConfig, TcpItem, TcpOutput, TcpPolicy, TcpReassembler,
@@ -41,6 +47,8 @@ enum Command {
     Flows(FlowsArgs),
     /// Reassemble IP fragments and directional TCP byte streams.
     Streams(StreamsArgs),
+    /// Parse reassembled streams and UDP datagrams into application-layer tables.
+    App(AppArgs),
 }
 
 #[derive(Args)]
@@ -141,6 +149,29 @@ struct StreamsArgs {
     input: PathBuf,
 }
 
+#[derive(Args)]
+struct AppArgs {
+    #[arg(long, default_value = "bsd")]
+    ip_policy: String,
+    #[arg(long, default_value = "bsd")]
+    tcp_policy: String,
+    #[arg(long, value_enum, default_value = "on-ack")]
+    delivery: StreamDelivery,
+    /// Maximum retained TCP reassembly memory in bytes.
+    #[arg(long, default_value = "1073741824")]
+    memory: usize,
+    /// Maximum application probe and parser buffer memory in bytes.
+    #[arg(long, default_value = "268435456")]
+    app_memory: usize,
+    #[arg(long, default_value = "dns,http,tls,ftp,ssh,smtp,telnet")]
+    protocols: String,
+    #[arg(long, value_enum, default_value = "parquet")]
+    format: OutputFormat,
+    #[arg(short = 'o', long)]
+    output: PathBuf,
+    input: PathBuf,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Parquet,
@@ -193,7 +224,280 @@ fn main() -> ExitCode {
         Command::Packets(args) => packets(args),
         Command::Flows(args) => flows(args),
         Command::Streams(args) => streams(args),
+        Command::App(args) => app_command(args),
     }
+}
+
+fn app_command(args: AppArgs) -> ExitCode {
+    let ip_policy: IpPolicy = match args.ip_policy.parse() {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("packet-tools app: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let tcp_policy: TcpPolicy = match args.tcp_policy.parse() {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("packet-tools app: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let protocols = match parse_protocols(&args.protocols) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("packet-tools app: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let format = match args.format {
+        OutputFormat::Csv => Format::Csv,
+        OutputFormat::Parquet => Format::Parquet,
+    };
+    let delivery = match args.delivery {
+        StreamDelivery::OnAck => DeliveryMode::OnAck,
+        StreamDelivery::Immediate => DeliveryMode::Immediate,
+    };
+    let mut capture = match Capture::open(&args.input) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("packet-tools app: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut defrag = Defragmenter::new(DefragConfig {
+        policy: ip_policy,
+        memory_limit: args.memory.min(64 * 1024 * 1024),
+        ..DefragConfig::default()
+    });
+    let mut tcp = TcpReassembler::new(TcpConfig {
+        policy: tcp_policy,
+        delivery,
+        memory_limit: args.memory,
+        ..TcpConfig::default()
+    });
+    let mut analyzer = AppAnalyzer::with_memory_limit(protocols.clone(), args.app_memory);
+    let mut udp_output = AppOutput::default();
+    let mut incremental_writer = if format == Format::Parquet {
+        match AppWriter::new(&args.output, format) {
+            Ok(writer) => Some(writer),
+            Err(error) => {
+                eprintln!("packet-tools app: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+    let mut udp_flows: HashMap<FlowIdentityKey, (u64, FlowCtx)> = HashMap::new();
+    let mut udp_dispatched = HashSet::new();
+    let mut read_error = None;
+    while let Some(result) = capture.next_record() {
+        let record = match result {
+            Ok(value) => value,
+            Err(error) => {
+                read_error = Some(error.to_string());
+                break;
+            }
+        };
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        let fragmented = packet
+            .layer::<Ipv4View>()
+            .is_some_and(|ip| ip.more_fragments() || ip.fragment_offset() != 0)
+            || packet
+                .layer::<Ipv6View>()
+                .is_some_and(|ip| ip.fragment().is_some());
+        let defrag_output = defrag.push(&record, &packet);
+        if !fragmented {
+            consume_app_packet(
+                &record,
+                &packet,
+                &protocols,
+                &mut tcp,
+                &mut analyzer,
+                &mut udp_output,
+                &mut udp_flows,
+                &mut udp_dispatched,
+            );
+        }
+        for datagram in defrag_output.datagrams {
+            let synthetic = packet_tools_capture::PacketRecord {
+                index: datagram.last_index,
+                ts_ns: Some(datagram.last_ts_ns),
+                caplen: datagram.bytes.len() as u32,
+                origlen: datagram.bytes.len() as u32,
+                linktype: packet_tools_capture::LinkType(101),
+                interface: 0,
+                data: &datagram.bytes,
+            };
+            let decoded = decode(&datagram.bytes, synthetic.linktype, DecodeDepth::L4);
+            consume_app_packet(
+                &synthetic,
+                &decoded,
+                &protocols,
+                &mut tcp,
+                &mut analyzer,
+                &mut udp_output,
+                &mut udp_flows,
+                &mut udp_dispatched,
+            );
+        }
+        if let Some(writer) = incremental_writer.as_mut()
+            && analyzer.event_count() + udp_output.events.len() >= 16_384
+        {
+            let events = analyzer.drain_events();
+            if let Err(error) = writer
+                .write_events(&events)
+                .and_then(|()| writer.write_events(&udp_output.events))
+            {
+                eprintln!("packet-tools app: {error}");
+                return ExitCode::FAILURE;
+            }
+            udp_output.events.clear();
+        }
+    }
+    let finished = tcp.finish();
+    for item in finished.items {
+        analyzer.consume(item);
+    }
+    let mut output = analyzer.finish();
+    output.dispatch.extend(udp_output.dispatch);
+    output
+        .dispatch
+        .sort_by_key(|row| (row.stream_id.is_none(), row.stream_id, row.flow_uid));
+    let write_result = if let Some(mut writer) = incremental_writer {
+        writer
+            .write_events(&output.events)
+            .and_then(|()| writer.write_events(&udp_output.events))
+            .and_then(|()| writer.write_dispatch(&output.dispatch))
+            .and_then(|()| writer.close())
+    } else {
+        output.events.extend(udp_output.events);
+        write_app(&args.output, format, &output)
+    };
+    if let Err(error) = write_result {
+        eprintln!("packet-tools app: {error}");
+        return ExitCode::FAILURE;
+    }
+    if let Some(error) = read_error {
+        eprintln!("packet-tools app: {error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn parse_protocols(value: &str) -> Result<Vec<Protocol>, String> {
+    let mut result = Vec::new();
+    for name in value.split(',').filter(|v| !v.trim().is_empty()) {
+        let protocol = name.parse()?;
+        if !result.contains(&protocol) {
+            result.push(protocol);
+        }
+    }
+    if result.is_empty() {
+        Err("--protocols must select at least one protocol".into())
+    } else {
+        Ok(result)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn consume_app_packet(
+    record: &packet_tools_capture::PacketRecord<'_>,
+    packet: &Packet<'_>,
+    protocols: &[Protocol],
+    tcp: &mut TcpReassembler,
+    analyzer: &mut AppAnalyzer,
+    udp_output: &mut AppOutput,
+    udp_flows: &mut HashMap<FlowIdentityKey, (u64, FlowCtx)>,
+    udp_dispatched: &mut HashSet<u64>,
+) {
+    let tcp_output = tcp.push(record, packet);
+    for item in tcp_output.items {
+        analyzer.consume(item);
+    }
+    if !protocols.contains(&Protocol::Dns) {
+        return;
+    }
+    let Some((src, dst, src_port, dst_port, payload)) = udp_input(packet) else {
+        return;
+    };
+    let response = payload.get(2).is_some_and(|flags| flags & 0x80 != 0);
+    let (client_ip, server_ip, client_port, server_port, direction) = if response {
+        (dst, src, dst_port, src_port, Direction::ServerToClient)
+    } else {
+        (src, dst, src_port, dst_port, Direction::ClientToServer)
+    };
+    let key = FlowIdentityKey::normalized(src, dst, src_port, dst_port, 17, None);
+    let timestamp = record.ts_ns.unwrap_or(0);
+    let (uid, ctx) = udp_flows.entry(key.clone()).or_insert_with(|| {
+        let uid = flow_uid(&key, timestamp);
+        (
+            uid,
+            FlowCtx {
+                flow_uid: uid,
+                stream_id: None,
+                client_ip,
+                server_ip,
+                client_port,
+                server_port,
+                transport: Transport::Udp,
+                midstream: false,
+            },
+        )
+    });
+    let source = ByteSource {
+        offset: 0,
+        len: payload.len(),
+        index: record.index,
+        ts_ns: timestamp,
+    };
+    let mut parser = DnsParser::new(ctx.clone(), false);
+    let confidence = parser.probe(ctx, direction, payload);
+    if src_port != 53 && dst_port != 53 && confidence != Confidence::Certain {
+        return;
+    }
+    let before = udp_output.events.len();
+    parser.feed(
+        direction,
+        AppChunk {
+            position: 0,
+            bytes: payload,
+            sources: &[source],
+        },
+        &mut udp_output.events,
+    );
+    if udp_dispatched.insert(*uid) {
+        udp_output.dispatch.push(DispatchRow {
+            stream_id: None,
+            flow_uid: *uid,
+            client_ip: client_ip.to_string(),
+            server_ip: server_ip.to_string(),
+            client_port,
+            server_port,
+            protocol: "dns".into(),
+            probe_direction: Some(direction.as_str().into()),
+            probe_bytes: payload.len() as u64,
+            stop_reason: None,
+        });
+    }
+    if udp_output.events.len() == before && payload.len() >= 12 {
+        parser.finish(&mut udp_output.events);
+    }
+}
+
+fn udp_input<'a>(
+    packet: &Packet<'a>,
+) -> Option<(std::net::IpAddr, std::net::IpAddr, u16, u16, &'a [u8])> {
+    let udp = packet.layer::<UdpView>()?;
+    let (src, dst) = if let Some(ip) = packet.layer::<Ipv4View>() {
+        (ip.src().into(), ip.dst().into())
+    } else {
+        let ip = packet.layer::<Ipv6View>()?;
+        (ip.src().into(), ip.dst().into())
+    };
+    Some((src, dst, udp.src_port(), udp.dst_port(), packet.payload()))
 }
 
 #[derive(Clone)]

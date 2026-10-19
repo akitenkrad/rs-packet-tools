@@ -1,1 +1,17 @@
-//! Application-layer parsers for DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, and Telnet, plus their registration mechanism.
+//! Stateful application-layer parsers and stream dispatch.
+
+mod dispatch;
+mod dns;
+mod http;
+mod line;
+mod model;
+mod ssh;
+mod tls;
+
+pub use dispatch::*;
+pub use dns::DnsParser;
+pub use http::HttpParser;
+pub use line::{FtpParser, SmtpParser, TelnetParser};
+pub use model::*;
+pub use ssh::SshParser;
+pub use tls::TlsParser;

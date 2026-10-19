@@ -24,6 +24,7 @@ fn manifest_has_one_entry_per_capture_file() {
     assert_eq!(
         names,
         BTreeSet::from([
+            "app/scenarios.pcap",
             "be_nsec.pcap",
             "be_usec.pcap",
             "flows/scenarios.pcap",

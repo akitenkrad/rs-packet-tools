@@ -26,6 +26,8 @@ arrow = { version = "60.0.0", default-features = false, features = ["csv"] }
 clap = { version = "4.5.50", features = ["derive"] }
 etherparse = "0.21.0"
 flate2 = "1.1.5"
+httparse = "1.10.1"
+md-5 = "0.10.6"
 memmap2 = "0.9.8"
 parquet = { version = "60.0.0", default-features = false, features = ["arrow", "snap"] }
 pcap-file = "2.0.0"

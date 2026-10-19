@@ -1,5 +1,365 @@
 {
   "files": {
+    "app/scenarios.pcap": {
+      "format": "pcap",
+      "endianness": "little",
+      "ts_resolution": "nanosecond",
+      "compressed": false,
+      "packet_count": 35,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000400000000000,
+          "caplen": 260,
+          "origlen": 260,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: pipelined HTTP requests on nonstandard port"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000400001000000,
+          "caplen": 181,
+          "origlen": 181,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: HEAD, 304, and chunked HTTP responses"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000400002000000,
+          "caplen": 127,
+          "origlen": 127,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: HTTP request after a leading keepalive byte"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000400003000000,
+          "caplen": 16438,
+          "origlen": 16438,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: midstream HTTP response body reaches one-direction probe limit"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000400004000000,
+          "caplen": 16438,
+          "origlen": 16438,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: midstream HTTP response body reaches one-direction probe limit"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000400005000000,
+          "caplen": 16438,
+          "origlen": 16438,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: midstream HTTP response body reaches one-direction probe limit"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000400006000000,
+          "caplen": 16438,
+          "origlen": 16438,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: midstream HTTP response body reaches one-direction probe limit"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000400007000000,
+          "caplen": 100,
+          "origlen": 100,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: HTTP request identifies flow after opposite probe limit"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000400008000000,
+          "caplen": 71,
+          "origlen": 71,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: split TLS ClientHello first packet"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000400009000000,
+          "caplen": 158,
+          "origlen": 158,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: split TLS ClientHello second packet"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000400010000000,
+          "caplen": 91,
+          "origlen": 91,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: two TLS Heartbeat records in one packet"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000400011000000,
+          "caplen": 133,
+          "origlen": 133,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: TLS ServerHello without extensions"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000400012000000,
+          "caplen": 67,
+          "origlen": 67,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: malformed TLS ServerHello remains visible"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000400013000000,
+          "caplen": 79,
+          "origlen": 79,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: FTP login commands"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000400014000000,
+          "caplen": 94,
+          "origlen": 94,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: FTP multiline response"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000400015000000,
+          "caplen": 69,
+          "origlen": 69,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: FTP successful login"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000400016000000,
+          "caplen": 235,
+          "origlen": 235,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: SSH identification and KEXINIT"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000400017000000,
+          "caplen": 151,
+          "origlen": 151,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: SMTP commands and DATA"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000400018000000,
+          "caplen": 78,
+          "origlen": 78,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: SMTP greeting"
+        },
+        {
+          "index": 19,
+          "ts_ns": 1700000400019000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 20,
+          "ts_ns": 1700000400020000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 21,
+          "ts_ns": 1700000400021000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 22,
+          "ts_ns": 1700000400022000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 23,
+          "ts_ns": 1700000400023000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 24,
+          "ts_ns": 1700000400024000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 25,
+          "ts_ns": 1700000400025000000,
+          "caplen": 55,
+          "origlen": 55,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet character-at-a-time input"
+        },
+        {
+          "index": 26,
+          "ts_ns": 1700000400026000000,
+          "caplen": 57,
+          "origlen": 57,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: Telnet IAC WILL negotiation"
+        },
+        {
+          "index": 27,
+          "ts_ns": 1700000400027000000,
+          "caplen": 86,
+          "origlen": 86,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: length-prefixed TCP DNS query"
+        },
+        {
+          "index": 28,
+          "ts_ns": 1700000400028000000,
+          "caplen": 102,
+          "origlen": 102,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: length-prefixed TCP DNS response"
+        },
+        {
+          "index": 29,
+          "ts_ns": 1700000400029000000,
+          "caplen": 71,
+          "origlen": 71,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: FTP before TCP gap"
+        },
+        {
+          "index": 30,
+          "ts_ns": 1700000400030000000,
+          "caplen": 86,
+          "origlen": 86,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: FTP resumes after TCP gap"
+        },
+        {
+          "index": 31,
+          "ts_ns": 1700000400031000000,
+          "caplen": 88,
+          "origlen": 88,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: compressed UDP DNS response"
+        },
+        {
+          "index": 32,
+          "ts_ns": 1700000400032000000,
+          "caplen": 60,
+          "origlen": 60,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: DNS compression pointer loop"
+        },
+        {
+          "index": 33,
+          "ts_ns": 1700000400033000000,
+          "caplen": 58,
+          "origlen": 58,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: fragmented UDP DNS first"
+        },
+        {
+          "index": 34,
+          "ts_ns": 1700000400034000000,
+          "caplen": 48,
+          "origlen": 48,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "app: fragmented UDP DNS final"
+        }
+      ],
+      "sha256": "bd806c1cefc584d86dccf9e8428d6f7ded2fac5be03549e7891507e700ddaaef"
+    },
     "be_nsec.pcap": {
       "format": "pcap",
       "endianness": "big",

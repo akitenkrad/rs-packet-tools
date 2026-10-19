@@ -6,7 +6,7 @@
 
 `packet-tools` is a Rust library and CLI for fast offline analysis of PCAP and pcapng captures. It is meant as a fast alternative to Scapy for research workloads such as intrusion-detection datasets: it extracts per-packet fields, builds bidirectional flows with configurable termination rules and flow features, reassembles IP fragments and TCP streams, parses application-layer protocols (DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, Telnet), and writes the results to Parquet or CSV.
 
-> **Status: early development (M4).** Capture reading, L2–L4 packet export, bidirectional flow tables, CICFlowMeter-compatible flow features, IPv4/IPv6 defragmentation and directional TCP stream reconstruction are implemented. Application parsing remains a later milestone. See [Architecture](docs/architecture.md) for the plan.
+> **Status: early development (M5).** Capture reading, L2–L4 packet export, bidirectional flow tables, CICFlowMeter-compatible flow features, IP/TCP reassembly, and DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, and Telnet parsing are implemented. See [Architecture](docs/architecture.md) for the plan.
 
 ## Install
 
@@ -24,6 +24,7 @@ cargo run -p packet-tools -- --version
 - [CLI](docs/cli.md): the `packet-tools` command
 - [Library](docs/library.md): reading and decoding captures from Rust
 - [Flow columns](docs/flows-columns.md): flow schemas and CICFlowMeter name mapping
+- [Application tables](docs/app-tables.md): application-layer output schemas
 - [Architecture](docs/architecture.md): crate layout, design principles and milestones
 - [Development](docs/development.md): tests, synthetic fixtures, CI and benchmarks
 

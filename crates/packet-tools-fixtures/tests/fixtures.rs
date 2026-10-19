@@ -19,7 +19,8 @@ use pcap_parser::{
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-const EXPECTED_FILES: [&str; 9] = [
+const EXPECTED_FILES: [&str; 10] = [
+    "app",
     "be_nsec.pcap",
     "be_usec.pcap",
     "flows",
@@ -78,7 +79,7 @@ fn committed_fixtures_match_manifest_with_both_external_readers() {
     let manifest: Manifest = serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap())
         .expect("manifest must match its documented schema");
 
-    assert_eq!(manifest.files.len(), 8);
+    assert_eq!(manifest.files.len(), 9);
     for (name, expected_file) in &manifest.files {
         let stored = fs::read(root.join(name)).unwrap();
         assert_eq!(sha256(&stored), expected_file.sha256, "SHA-256 for {name}");
@@ -107,7 +108,7 @@ fn regeneration_is_byte_for_byte_identical() {
     run_generator(temp.path());
 
     for name in EXPECTED_FILES {
-        if matches!(name, "flows" | "reassembly") {
+        if matches!(name, "app" | "flows" | "reassembly") {
             continue;
         }
         assert_eq!(
@@ -116,6 +117,11 @@ fn regeneration_is_byte_for_byte_identical() {
             "regenerated {name} differs"
         );
     }
+    assert_eq!(
+        fs::read(committed.join("app/scenarios.pcap")).unwrap(),
+        fs::read(temp.path().join("app/scenarios.pcap")).unwrap(),
+        "regenerated application scenarios differ"
+    );
     assert_eq!(
         fs::read(committed.join("flows/scenarios.pcap")).unwrap(),
         fs::read(temp.path().join("flows/scenarios.pcap")).unwrap(),

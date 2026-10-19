@@ -10,6 +10,7 @@ Commands:
   packets   Export one row per packet to Parquet or CSV
   flows     Build bidirectional flows and export one row per completed flow
   streams   Reassemble IP fragments and directional TCP byte streams
+  app       Parse application events from reassembled TCP and UDP
   help      Print this message or the help of the given subcommand(s)
 ```
 
@@ -195,3 +196,33 @@ IP 断片と TCP payload は，重ならない区間として保持します．`
 ストリーム表は接続・方向ごとに 1 行です．列は `stream_id`，`flow_uid`，`direction`，client/server のアドレスとポート，`first_ts_ns`，`last_ts_ns`，`midstream`，`bytes`，`segments`，`gaps`，`gap_bytes`，`overlaps`，`overlap_conflicts`，`retransmitted_bytes`，`post_close_packets`，`post_close_bytes`，`keepalives`，`close_reason`，`sha256` です．hash は gap を除いて配送済みデータを連結した値です．`--dump-dir` は同じバイト列を `<stream_id>.c2s.bin` と `<stream_id>.s2c.bin` に保存します．
 
 事象表には `ip_overlap`，`ip_overlap_conflict`，`ip_timeout`，`ip_too_large`，`ip_too_many_fragments`，`ip_memory_limit`，`tcp_overlap_conflict`，`tcp_late_overlap_conflict`，`tcp_data_after_close`，`tcp_memory_limit`，`tcp_rst_ignored` と，該当するキー，範囲，残した側を記録します．データグラム表には，完成時の packet index，IP 版，アドレス，識別子，protocol，断片数，再構成後の長さ，payload の SHA-256 を記録します．
+
+## `app`
+
+IP フラグメントと TCP ストリームを再構成し，アプリ層の事象を解析して，選んだプロトコルごとの表へ書き出します．
+
+```text
+Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUT>
+
+Options:
+      --ip-policy <IP_POLICY>      [default: bsd]
+      --tcp-policy <TCP_POLICY>    [default: bsd]
+      --delivery <DELIVERY>        [default: on-ack] [possible values: on-ack, immediate]
+      --memory <BYTES>             [default: 1073741824]
+      --app-memory <BYTES>         [default: 268435456]
+      --protocols <PROTOCOLS>      [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>            [default: parquet] [possible values: parquet, csv]
+  -o, --output <OUTPUT>            出力ディレクトリ
+```
+
+```sh
+packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pcapng
+```
+
+ポート番号は解析器の候補を並べるためだけに使います．midstream 接続では後から届くバイト列も含め，各方向を独立に 64 KiB まで調べます．どちらか一方の `probe` が `Certain` を返した時点で解析器を決めるため，反対方向が本文の途中から始まっていても，標準外のポートにある HTTP，TLS，SSH，FTP，SMTP を検出できます．確実に判定できなかったストリームは `dispatch` に `unknown` として残し，解析しません．先頭の壊れたバイト列や TCP の gap がある場合，HTTP と行指向の解析器は次の識別可能な行から再開し，TLS は妥当なレコード境界を探します．gap，再開できない理由，再同期で読み飛ばしたバイト数は `dispatch.stop_reason` に残ります．
+
+`--memory` は TCP 再構成が保持するデータを制限します．`--app-memory` は probe 待ちのデータと解析途中のメッセージが確保した capacity の合計を別に制限し，既定値は 256 MiB です．上限を超えると，未判定のストリームは古いものから判定を中止します．解析器を選択済みの場合は，そのプロトコルで可能なら未完成のデータを解放し，識別できる次の境界から再開します．実施内容は `dispatch.stop_reason` に残ります．
+
+Parquet では，完成したアプリ層事象を有界なバッチで逐次書き出し，capture の終端まで保持しません．このため，アプリ層の上限は解析器の状態を制御し，完成済みの出力も別に有界になります．CSV は従来版との capture 順の互換性を保つため，解析の終了後に書き出します．
+
+出力ディレクトリには，選んだ形式の `dns`，`http`，`tls`，`tls_heartbeat`，`ftp`，`ssh`，`smtp`，`telnet`，`dispatch` を作ります．HTTP/1.x の対象は TCP だけであり，SSDP のような UDP 上の HTTP 形式は対象外です．DNS の wire 形式として判定できる LLMNR（5355）と mDNS（5353）は DNS 表に含めます．事象の `index` と `ts_ns` は，最後のバイトを運んだ packet を指します．`on-ack` であとから配送された場合も ACK packet にはなりません．フラグメント化された UDP DNS は IP 再構成の後に解析します．入力形式の判定，読み込みエラー，終了コードはほかのコマンドと同じです．スキーマは[アプリ層の表](app-tables.ja.md)を参照してください．

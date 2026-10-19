@@ -66,7 +66,7 @@ capture -> dissect -> flow ----------------------> export
 | M2 | `packet-tools-dissect` と `packets` 表（完了） |
 | M3 | `packet-tools-flow` と `flows` 表（完了） |
 | M4 | `packet-tools-reassembly`（完了） |
-| M5 | `packet-tools-app` |
+| M5 | `packet-tools-app`（完了） |
 | M6 | 並列処理と性能の報告 |
 
 パケットの生成とライブキャプチャは，当面は対象外です．入力は trait として設計するので，あとからライブキャプチャの入力も追加できます．

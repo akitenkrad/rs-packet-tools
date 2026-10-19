@@ -114,6 +114,25 @@ pub struct StreamChunk {
     pub direction: Direction,
     pub position: u64,
     pub bytes: Arc<[u8]>,
+    /// Ranges within `bytes` and the capture packet that supplied each range.
+    pub sources: Arc<[StreamSource]>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StreamSource {
+    pub offset: usize,
+    pub len: usize,
+    pub index: u64,
+    pub ts_ns: i64,
+}
+
+impl StreamChunk {
+    /// Returns the source capture packet for one byte in this chunk.
+    pub fn source_at(&self, offset: usize) -> Option<&StreamSource> {
+        self.sources
+            .iter()
+            .find(|source| offset >= source.offset && offset < source.offset + source.len)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -464,9 +483,12 @@ impl TcpReassembler {
         if !input.payload.is_empty() {
             current.summary.segments += 1;
             let payload_seq = input.seq.wrapping_add(u32::from(input.syn));
-            let overlaps = current
-                .buffer
-                .insert(payload_seq, input.payload, record.index);
+            let overlaps = current.buffer.insert_with_timestamp(
+                payload_seq,
+                input.payload,
+                record.index,
+                raw_ts,
+            );
             for overlap in overlaps {
                 current.summary.overlaps += 1;
                 current.summary.retransmitted_bytes += overlap.len as u64;
@@ -821,12 +843,13 @@ fn deliver_available(
         .min(state.buffer.len());
     let mut cursor = state.delivered;
     while cursor < end {
-        if let Some((next, bytes)) = state.buffer.data_at(cursor, end) {
+        if let Some((next, bytes, sources)) = state.buffer.data_at(cursor, end) {
             items.push(TcpItem::Data(StreamChunk {
                 stream_id: start.stream_id,
                 direction,
                 position: cursor as u64,
                 bytes: Arc::from(bytes),
+                sources: Arc::from(sources),
             }));
             cursor = next;
         } else if allow_gaps {

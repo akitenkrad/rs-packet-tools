@@ -1,6 +1,13 @@
 //! IPv4/IPv6 fragment reassembly and TCP stream reconstruction.
 
-use std::{fmt, str::FromStr};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+    str::FromStr,
+    sync::Arc,
+};
+
+use ahash::AHashMap;
 
 mod ip;
 pub use ip::*;
@@ -98,26 +105,52 @@ struct Span {
     start: usize,
     end: usize,
     packet_index: u64,
+    ts_ns: i64,
 }
 
 #[derive(Clone, Debug)]
 struct Interval {
     start: usize,
-    bytes: Vec<u8>,
+    bytes: Arc<[u8]>,
+    data_start: usize,
+    data_end: usize,
     owner: Span,
 }
 
 impl Interval {
     fn end(&self) -> usize {
-        self.start.saturating_add(self.bytes.len())
+        self.start.saturating_add(self.len())
+    }
+
+    fn len(&self) -> usize {
+        self.data_end.saturating_sub(self.data_start)
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        &self.bytes[self.data_start..self.data_end]
     }
 
     fn slice(&self, start: usize, end: usize) -> Self {
         Self {
             start,
-            bytes: self.bytes[start - self.start..end - self.start].to_vec(),
+            bytes: Arc::clone(&self.bytes),
+            data_start: self.data_start + start - self.start,
+            data_end: self.data_start + end - self.start,
             owner: self.owner,
         }
+    }
+
+    fn backing_key(&self) -> usize {
+        self.bytes.as_ptr() as usize
+    }
+
+    fn compact_backing(mut self) -> Self {
+        if self.bytes.len() > self.len().saturating_mul(2) {
+            self.bytes = Arc::from(self.as_slice());
+            self.data_start = 0;
+            self.data_end = self.bytes.len();
+        }
+        self
     }
 }
 
@@ -166,11 +199,12 @@ impl FragmentBuffer {
             start: offset,
             end,
             packet_index,
+            ts_ns: 0,
         };
         let (intervals, events) = overlay_intervals(
             std::mem::take(&mut self.intervals),
             new_owner,
-            data,
+            Arc::from(data),
             0,
             |new, old| ip_new_wins(self.policy, new, old),
         );
@@ -192,7 +226,8 @@ impl FragmentBuffer {
                             break;
                         }
                         let copy_end = interval.end().min(length);
-                        payload.extend_from_slice(&interval.bytes[..copy_end - interval.start]);
+                        payload
+                            .extend_from_slice(&interval.as_slice()[..copy_end - interval.start]);
                     }
                     return Some(payload);
                 }
@@ -237,7 +272,10 @@ fn ip_new_wins(policy: IpPolicy, new: Span, old: Span) -> bool {
 pub struct TcpSegmentBuffer {
     policy: TcpPolicy,
     pub(crate) isn: u32,
-    intervals: Vec<Interval>,
+    intervals: BTreeMap<usize, Interval>,
+    payload_refs: AHashMap<usize, (usize, usize)>,
+    payload_bytes: usize,
+    stored_bytes: usize,
     immutable_prefix: usize,
     end: usize,
     contiguous: usize,
@@ -253,7 +291,10 @@ impl TcpSegmentBuffer {
         Self {
             policy,
             isn,
-            intervals: Vec::new(),
+            intervals: BTreeMap::new(),
+            payload_refs: AHashMap::new(),
+            payload_bytes: 0,
+            stored_bytes: 0,
             immutable_prefix: 0,
             end: 0,
             contiguous: 0,
@@ -263,24 +304,60 @@ impl TcpSegmentBuffer {
 
     /// Inserts payload whose first byte has the supplied TCP sequence number.
     pub fn insert(&mut self, sequence: u32, data: &[u8], packet_index: u64) -> Vec<OverlapEvent> {
+        self.insert_with_timestamp(sequence, data, packet_index, 0)
+    }
+
+    pub(crate) fn insert_with_timestamp(
+        &mut self,
+        sequence: u32,
+        data: &[u8],
+        packet_index: u64,
+        ts_ns: i64,
+    ) -> Vec<OverlapEvent> {
         let Some(start) = self.position(sequence) else {
             return Vec::new();
         };
+        if data.is_empty() {
+            return Vec::new();
+        }
         let end = start.saturating_add(data.len());
         self.end = self.end.max(end);
         let new_owner = Span {
             start,
             end,
             packet_index,
+            ts_ns,
         };
+        let mut keys = Vec::new();
+        if let Some((&key, interval)) = self.intervals.range(..=start).next_back()
+            && interval.end() > start
+        {
+            keys.push(key);
+        }
+        let predecessor = keys.first().copied();
+        keys.extend(
+            self.intervals
+                .range(start..end)
+                .map(|(&key, _)| key)
+                .filter(|key| predecessor != Some(*key)),
+        );
+        let mut overlapping = Vec::with_capacity(keys.len());
+        for key in keys {
+            if let Some(interval) = self.intervals.remove(&key) {
+                self.uncharge(&interval);
+                overlapping.push(interval);
+            }
+        }
         let (intervals, events) = overlay_intervals(
-            std::mem::take(&mut self.intervals),
+            overlapping,
             new_owner,
-            data,
+            Arc::from(data),
             self.immutable_prefix,
             |new, old| tcp_new_wins(self.policy, new, old),
         );
-        self.intervals = intervals;
+        for interval in intervals {
+            self.insert_interval(interval);
+        }
         self.extend_contiguous();
         events
     }
@@ -288,12 +365,13 @@ impl TcpSegmentBuffer {
     /// Renders the receive buffer from ISN+1, using the supplied byte for gaps.
     pub fn render(&self, length: usize, gap: u8) -> Vec<u8> {
         let mut rendered = vec![gap; length];
-        for interval in &self.intervals {
+        for interval in self.intervals.values() {
             if interval.start >= length {
                 break;
             }
             let end = interval.end().min(length);
-            rendered[interval.start..end].copy_from_slice(&interval.bytes[..end - interval.start]);
+            rendered[interval.start..end]
+                .copy_from_slice(&interval.as_slice()[..end - interval.start]);
         }
         rendered
     }
@@ -317,54 +395,101 @@ impl TcpSegmentBuffer {
     }
 
     pub(crate) fn release_storage(&mut self) {
-        self.intervals = Vec::new();
+        self.intervals = BTreeMap::new();
+        self.payload_refs.clear();
+        self.payload_bytes = 0;
+        self.stored_bytes = 0;
     }
 
     /// Number of received bytes currently held by this interval buffer.
     pub fn buffered_bytes(&self) -> usize {
-        self.intervals
-            .iter()
-            .map(|interval| interval.bytes.len())
-            .sum()
+        self.stored_bytes
     }
 
     pub(crate) fn next_present(&self, position: usize, end: usize) -> Option<usize> {
+        if let Some(interval) = self
+            .intervals
+            .range(..=position)
+            .next_back()
+            .map(|(_, interval)| interval)
+            && interval.end() > position
+        {
+            return Some(position);
+        }
         self.intervals
-            .iter()
-            .find(|interval| interval.end() > position && interval.start < end)
-            .map(|interval| interval.start.max(position))
+            .range(position..end)
+            .next()
+            .map(|(&start, _)| start)
     }
 
-    pub(crate) fn data_at(&self, position: usize, end: usize) -> Option<(usize, Vec<u8>)> {
-        let first = self
-            .intervals
-            .iter()
-            .position(|interval| interval.start <= position && interval.end() > position)?;
+    pub(crate) fn data_at(
+        &self,
+        position: usize,
+        end: usize,
+    ) -> Option<(usize, Vec<u8>, Vec<crate::StreamSource>)> {
+        let (&first, interval) = self.intervals.range(..=position).next_back()?;
+        if interval.end() <= position {
+            return None;
+        }
         let mut cursor = position;
         let mut bytes = Vec::new();
-        for interval in &self.intervals[first..] {
+        let mut sources: Vec<crate::StreamSource> = Vec::new();
+        for interval in self.intervals.range(first..).map(|(_, interval)| interval) {
             if interval.start > cursor || cursor >= end {
                 break;
             }
             let copy_end = interval.end().min(end);
             bytes.extend_from_slice(
-                &interval.bytes[cursor.saturating_sub(interval.start)..copy_end - interval.start],
+                &interval.as_slice()
+                    [cursor.saturating_sub(interval.start)..copy_end - interval.start],
             );
+            let len = copy_end - cursor;
+            if let Some(last) = sources.last_mut()
+                && last.index == interval.owner.packet_index
+                && last.ts_ns == interval.owner.ts_ns
+                && last.offset + last.len == bytes.len() - len
+            {
+                last.len += len;
+            } else {
+                sources.push(crate::StreamSource {
+                    offset: bytes.len() - len,
+                    len,
+                    index: interval.owner.packet_index,
+                    ts_ns: interval.owner.ts_ns,
+                });
+            }
             cursor = copy_end;
         }
-        Some((cursor, bytes))
+        Some((cursor, bytes, sources))
     }
 
     pub(crate) fn oldest_pending_end(&self, position: usize) -> Option<usize> {
+        if let Some(interval) = self
+            .intervals
+            .range(..=position)
+            .next_back()
+            .map(|(_, interval)| interval)
+            && interval.end() > position
+        {
+            return Some(interval.end());
+        }
         self.intervals
-            .iter()
-            .find(|interval| interval.end() > position)
-            .map(Interval::end)
+            .range(position..)
+            .next()
+            .map(|(_, interval)| interval.end())
     }
 
     /// Estimated heap allocation for payload and interval metadata.
     pub fn allocated_bytes(&self) -> usize {
-        interval_allocated_bytes(&self.intervals)
+        self.payload_bytes
+            .saturating_add(self.intervals.len().saturating_mul(
+                std::mem::size_of::<(usize, Interval)>() + 3 * std::mem::size_of::<usize>(),
+            ))
+            .saturating_add(
+                self.payload_refs
+                    .capacity()
+                    .saturating_mul(std::mem::size_of::<(usize, (usize, usize))>()),
+            )
     }
 
     /// Number of disjoint stored payload intervals.
@@ -378,11 +503,13 @@ impl TcpSegmentBuffer {
 
     fn extend_contiguous(&mut self) {
         let mut cursor = self.contiguous;
-        for interval in &self.intervals {
+        while let Some(interval) = self
+            .intervals
+            .range(..=cursor)
+            .next_back()
+            .map(|(_, interval)| interval)
+        {
             if interval.end() <= cursor {
-                continue;
-            }
-            if interval.start > cursor {
                 break;
             }
             cursor = interval.end();
@@ -395,34 +522,84 @@ impl TcpSegmentBuffer {
     }
 
     fn remove_before(&mut self, position: usize) {
-        let mut kept = Vec::with_capacity(self.intervals.len());
-        for interval in std::mem::take(&mut self.intervals) {
-            if interval.end() <= position {
-                continue;
-            }
-            if interval.start < position {
-                kept.push(interval.slice(position, interval.end()));
-            } else {
-                kept.push(interval);
+        let keys = self
+            .intervals
+            .range(..position)
+            .map(|(&key, _)| key)
+            .collect::<Vec<_>>();
+        let mut tail = None;
+        for key in keys {
+            let interval = self.intervals.remove(&key).expect("collected key");
+            self.uncharge(&interval);
+            if interval.end() > position {
+                tail = Some(interval.slice(position, interval.end()).compact_backing());
             }
         }
-        kept.shrink_to_fit();
-        self.intervals = kept;
+        if let Some(interval) = tail {
+            self.insert_interval(interval);
+        }
+    }
+
+    fn insert_interval(&mut self, interval: Interval) {
+        if interval.len() == 0 {
+            return;
+        }
+        self.charge(&interval);
+        let replaced = self.intervals.insert(interval.start, interval);
+        debug_assert!(replaced.is_none());
+    }
+
+    fn charge(&mut self, interval: &Interval) {
+        self.stored_bytes = self.stored_bytes.saturating_add(interval.len());
+        let entry = self
+            .payload_refs
+            .entry(interval.backing_key())
+            .or_insert((interval.bytes.len(), 0));
+        if entry.1 == 0 {
+            self.payload_bytes = self.payload_bytes.saturating_add(entry.0);
+        }
+        entry.1 += 1;
+    }
+
+    fn uncharge(&mut self, interval: &Interval) {
+        self.stored_bytes = self.stored_bytes.saturating_sub(interval.len());
+        let key = interval.backing_key();
+        let remove = if let Some(entry) = self.payload_refs.get_mut(&key) {
+            entry.1 -= 1;
+            if entry.1 == 0 {
+                self.payload_bytes = self.payload_bytes.saturating_sub(entry.0);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if remove {
+            self.payload_refs.remove(&key);
+        }
+    }
+
+    #[cfg(test)]
+    fn backing_allocation_count(&self) -> usize {
+        self.payload_refs.len()
     }
 }
 
 fn interval_allocated_bytes(intervals: &Vec<Interval>) -> usize {
+    let mut seen = HashSet::new();
     intervals.capacity() * std::mem::size_of::<Interval>()
         + intervals
             .iter()
-            .map(|interval| interval.bytes.capacity())
+            .filter(|interval| seen.insert(interval.backing_key()))
+            .map(|interval| interval.bytes.len())
             .sum::<usize>()
 }
 
 fn overlay_intervals(
     existing: Vec<Interval>,
     new_owner: Span,
-    data: &[u8],
+    data: Arc<[u8]>,
     immutable_prefix: usize,
     new_wins: impl Fn(Span, Span) -> bool,
 ) -> (Vec<Interval>, Vec<OverlapEvent>) {
@@ -438,7 +615,7 @@ fn overlay_intervals(
         }
         if old.start >= new_owner.end {
             if new_cursor < new_owner.end {
-                push_new_interval(&mut output, new_owner, data, new_cursor, new_owner.end);
+                push_new_interval(&mut output, new_owner, &data, new_cursor, new_owner.end);
                 new_cursor = new_owner.end;
             }
             push_interval(&mut output, old);
@@ -452,7 +629,7 @@ fn overlay_intervals(
             let gap_end = old.start.min(new_owner.end);
             let gap_start = new_cursor.max(immutable_prefix);
             if gap_start < gap_end {
-                push_new_interval(&mut output, new_owner, data, gap_start, gap_end);
+                push_new_interval(&mut output, new_owner, &data, gap_start, gap_end);
             }
             new_cursor = gap_end;
         }
@@ -466,7 +643,7 @@ fn overlay_intervals(
             &mut events,
             &old,
             new_owner,
-            data,
+            &data,
             overlap_start..split,
             false,
         );
@@ -475,7 +652,7 @@ fn overlay_intervals(
             &mut events,
             &old,
             new_owner,
-            data,
+            &data,
             split..overlap_end,
             policy_replaces,
         );
@@ -488,7 +665,13 @@ fn overlay_intervals(
 
     let remaining_start = new_cursor.max(immutable_prefix);
     if remaining_start < new_owner.end {
-        push_new_interval(&mut output, new_owner, data, remaining_start, new_owner.end);
+        push_new_interval(
+            &mut output,
+            new_owner,
+            &data,
+            remaining_start,
+            new_owner.end,
+        );
     }
     (output, events)
 }
@@ -498,7 +681,7 @@ fn append_overlap(
     events: &mut Vec<OverlapEvent>,
     old: &Interval,
     new_owner: Span,
-    data: &[u8],
+    data: &Arc<[u8]>,
     range: std::ops::Range<usize>,
     replace: bool,
 ) {
@@ -513,7 +696,7 @@ fn append_overlap(
         RetainedSide::Existing
     };
     for position in start..end {
-        let old_byte = old.bytes[position - old.start];
+        let old_byte = old.as_slice()[position - old.start];
         let new_byte = data[position - new_owner.start];
         push_event(
             events,
@@ -534,7 +717,7 @@ fn append_overlap(
 fn push_new_interval(
     output: &mut Vec<Interval>,
     owner: Span,
-    data: &[u8],
+    data: &Arc<[u8]>,
     start: usize,
     end: usize,
 ) {
@@ -543,7 +726,9 @@ fn push_new_interval(
             output,
             Interval {
                 start,
-                bytes: data[start - owner.start..end - owner.start].to_vec(),
+                bytes: Arc::clone(data),
+                data_start: start - owner.start,
+                data_end: end - owner.start,
                 owner,
             },
         );
@@ -551,14 +736,16 @@ fn push_new_interval(
 }
 
 fn push_interval(output: &mut Vec<Interval>, interval: Interval) {
-    if interval.bytes.is_empty() {
+    if interval.len() == 0 {
         return;
     }
     if let Some(last) = output.last_mut()
         && last.end() == interval.start
         && last.owner == interval.owner
+        && Arc::ptr_eq(&last.bytes, &interval.bytes)
+        && last.data_end == interval.data_start
     {
-        last.bytes.extend_from_slice(&interval.bytes);
+        last.data_end = interval.data_end;
     } else {
         output.push(interval);
     }
@@ -606,4 +793,20 @@ fn push_event(
         previous_index,
         new_index,
     });
+}
+
+#[cfg(test)]
+mod tcp_storage_tests {
+    use super::{TcpPolicy, TcpSegmentBuffer};
+
+    #[test]
+    fn overlap_splits_share_the_original_payload_allocation() {
+        let mut buffer = TcpSegmentBuffer::new(TcpPolicy::Last, 0);
+        buffer.insert(1, &vec![b'a'; 64 * 1024], 1);
+        buffer.insert(16 * 1024 + 1, &vec![b'b'; 4 * 1024], 2);
+
+        assert_eq!(buffer.interval_count(), 3);
+        assert_eq!(buffer.backing_allocation_count(), 2);
+        assert_eq!(buffer.buffered_bytes(), 64 * 1024);
+    }
 }

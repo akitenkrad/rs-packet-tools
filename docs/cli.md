@@ -10,6 +10,7 @@ Commands:
   packets   Export one row per packet to Parquet or CSV
   flows     Build bidirectional flows and export one row per completed flow
   streams   Reassemble IP fragments and directional TCP byte streams
+  app       Parse application events from reassembled TCP and UDP
   help      Print this message or the help of the given subcommand(s)
 ```
 
@@ -209,3 +210,33 @@ After an accepted RST or a completed two-sided FIN close, the closed connection 
 The stream table has one row per connection and direction: `stream_id`, `flow_uid`, `direction`, client/server addresses and ports, `first_ts_ns`, `last_ts_ns`, `midstream`, `bytes`, `segments`, `gaps`, `gap_bytes`, `overlaps`, `overlap_conflicts`, `retransmitted_bytes`, `post_close_packets`, `post_close_bytes`, `keepalives`, `close_reason`, and `sha256`. The hash concatenates delivered data while omitting gaps. `--dump-dir` writes the same bytes to `<stream_id>.c2s.bin` and `<stream_id>.s2c.bin`.
 
 The event table records `ip_overlap`, `ip_overlap_conflict`, `ip_timeout`, `ip_too_large`, `ip_too_many_fragments`, `ip_memory_limit`, `tcp_overlap_conflict`, `tcp_late_overlap_conflict`, `tcp_data_after_close`, `tcp_memory_limit`, and `tcp_rst_ignored`, together with the applicable key, range and retained side. The datagram table records the completed packet index, IP version, addresses, identification, protocol, fragment count, reassembled length, and payload SHA-256.
+
+## `app`
+
+Reassembles IP fragments and TCP streams, parses application events, and writes one table per selected protocol.
+
+```text
+Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUT>
+
+Options:
+      --ip-policy <IP_POLICY>      [default: bsd]
+      --tcp-policy <TCP_POLICY>    [default: bsd]
+      --delivery <DELIVERY>        [default: on-ack] [possible values: on-ack, immediate]
+      --memory <BYTES>             [default: 1073741824]
+      --app-memory <BYTES>         [default: 268435456]
+      --protocols <PROTOCOLS>      [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>            [default: parquet] [possible values: parquet, csv]
+  -o, --output <OUTPUT>            Output directory
+```
+
+```sh
+packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pcapng
+```
+
+Ports only order parser candidates. Each direction is probed independently, including later bytes of a midstream connection, up to 64 KiB per direction. A parser is selected as soon as either direction returns `Certain`, so HTTP, TLS, SSH, FTP, and SMTP can be found on nonstandard ports even when the other direction begins inside a body. Streams with no certain match are recorded as `unknown` in `dispatch` and are not parsed. HTTP and line parsers scan for the next recognizable line after leading damage or a TCP gap; TLS scans for a plausible record boundary. `dispatch.stop_reason` records gaps, failed recovery, and the number of bytes skipped during resynchronization.
+
+`--memory` limits retained TCP reassembly data. `--app-memory` independently limits the total capacity of pending probe data and incomplete parser messages; its default is 256 MiB. If the application limit is exceeded, the oldest undecided stream is abandoned, or a selected parser releases incomplete data and resumes from a recognizable boundary when the protocol permits it. The action is recorded in `dispatch.stop_reason`.
+
+For Parquet output, completed application events are written in bounded batches instead of being retained until the end of the capture. The application-memory limit therefore covers parser state, while completed output remains bounded independently. CSV output preserves capture-order compatibility with earlier releases and is written after analysis.
+
+The directory contains `dns`, `http`, `tls`, `tls_heartbeat`, `ftp`, `ssh`, `smtp`, `telnet`, and `dispatch`, with the selected extension. HTTP/1.x parsing applies to TCP only; UDP HTTP-like protocols such as SSDP are outside this command's HTTP scope. DNS probing also accepts DNS wire messages carried on LLMNR (5355) and mDNS (5353). The event packet `index` and `ts_ns` identify the packet that supplied the final byte, even when `on-ack` releases the bytes later. Fragmented UDP DNS is parsed after IP reassembly. Capture detection, read errors, and exit status match the other commands. See [Application tables](app-tables.md) for the schemas.

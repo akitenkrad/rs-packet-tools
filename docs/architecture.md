@@ -66,7 +66,7 @@ capture -> dissect -> flow ----------------------> export
 | M2 | `packet-tools-dissect` and the `packets` table (done) |
 | M3 | `packet-tools-flow` and the `flows` table (done) |
 | M4 | `packet-tools-reassembly` (done) |
-| M5 | `packet-tools-app` |
+| M5 | `packet-tools-app` (done) |
 | M6 | Parallel processing and a performance report |
 
 Packet crafting and live capture are out of scope for now. The capture input is designed as a trait so that a live source can be added later.

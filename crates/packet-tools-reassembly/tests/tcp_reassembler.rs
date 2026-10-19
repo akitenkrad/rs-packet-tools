@@ -188,6 +188,58 @@ fn on_ack_waits_for_the_peer_ack_and_sequence_wrap_is_relative_to_isn() {
 }
 
 #[test]
+fn on_ack_data_keeps_the_data_packet_index_and_timestamp() {
+    let mut reassembly = TcpReassembler::new(TcpConfig::default());
+    handshake(&mut reassembly, 100);
+    let first = tcp_packet(
+        [192, 0, 2, 1],
+        [198, 51, 100, 2],
+        (1234, 80),
+        101,
+        501,
+        0x18,
+        b"ab",
+    );
+    let second = tcp_packet(
+        [192, 0, 2, 1],
+        [198, 51, 100, 2],
+        (1234, 80),
+        103,
+        501,
+        0x18,
+        b"cd",
+    );
+    push_at(&mut reassembly, 30, 3_000, &first);
+    push_at(&mut reassembly, 31, 3_100, &second);
+
+    let ack = tcp_packet(
+        [198, 51, 100, 2],
+        [192, 0, 2, 1],
+        (80, 1234),
+        501,
+        105,
+        0x10,
+        &[],
+    );
+    let output = push_at(&mut reassembly, 99, 9_900, &ack);
+    let chunk = output
+        .items
+        .iter()
+        .find_map(|item| match item {
+            TcpItem::Data(chunk) => Some(chunk),
+            _ => None,
+        })
+        .expect("ack releases data");
+
+    assert_eq!(&*chunk.bytes, b"abcd");
+    assert_eq!(chunk.source_at(0).map(|source| source.index), Some(30));
+    assert_eq!(chunk.source_at(1).map(|source| source.ts_ns), Some(3_000));
+    assert_eq!(chunk.source_at(2).map(|source| source.index), Some(31));
+    assert_eq!(chunk.source_at(3).map(|source| source.ts_ns), Some(3_100));
+    assert!(chunk.source_at(4).is_none());
+}
+
+#[test]
 fn capture_end_flushes_gaps_before_later_data() {
     let mut reassembly = TcpReassembler::new(TcpConfig::default());
     handshake(&mut reassembly, 100);

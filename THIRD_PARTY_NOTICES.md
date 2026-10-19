@@ -1,5 +1,7 @@
 # Third-party notices
 
+Application parsing uses `httparse` (MIT or Apache-2.0) and `md-5` (MIT or Apache-2.0). JA4 TLS client fingerprints follow the [FoxIO JA4 public specification](https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md), which documents the BSD-3-Clause JA4 method. No JA4+ source code is included.
+
 The reassembly test fixtures extract only inputs and expected values (no source code) from the
 Sturges & Novak overlap tests in OISF/suricata commit `b717c48`: `DefragSturgesNovak*` in
 `src/defrag.c` and `Overlap*` in `src/tests/stream-tcp-list.c`. Suricata is distributed under

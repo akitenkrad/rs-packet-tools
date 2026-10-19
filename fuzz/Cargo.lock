@@ -131,12 +131,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "packet-tools-flow"
+version = "0.1.0"
+dependencies = [
+ "packet-tools-capture",
+ "packet-tools-dissect",
+]
+
+[[package]]
 name = "packet-tools-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "packet-tools-capture",
  "packet-tools-dissect",
+ "packet-tools-flow",
 ]
 
 [[package]]

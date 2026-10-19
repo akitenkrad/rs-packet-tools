@@ -163,6 +163,22 @@ fn generate(out: &Path) -> io::Result<()> {
         ),
     );
 
+    let flows = flow_packets();
+    let flow_bytes = write_pcap(&flows, ByteOrder::Little, TimestampResolution::Nanosecond);
+    fs::create_dir_all(out.join("flows"))?;
+    write_file(out, "flows/scenarios.pcap", &flow_bytes)?;
+    files.insert(
+        "flows/scenarios.pcap".to_owned(),
+        manifest_file(
+            "pcap",
+            "little",
+            "nanosecond",
+            false,
+            ethernet_manifest(&flows),
+            &flow_bytes,
+        ),
+    );
+
     let mut manifest = serde_json::to_vec_pretty(&Manifest { files })
         .map_err(|error| io::Error::other(error.to_string()))?;
     manifest.push(b'\n');
@@ -642,6 +658,174 @@ fn ethernet_packets() -> Vec<Packet> {
     let previous = packets[packets.len() - 2].ts_ns;
     packets.last_mut().unwrap().ts_ns = previous - 1_000;
     packets
+}
+
+fn flow_packets() -> Vec<Packet> {
+    let a = [10, 0, 0, 1];
+    let b = [10, 0, 0, 2];
+    let a_mac = [0x02, 0, 0, 0, 1, 1];
+    let b_mac = [0x02, 0, 0, 0, 1, 2];
+    let base = BASE_SECONDS * 1_000_000_000;
+    let mut packets = Vec::new();
+    let mut add = |offset_ns: u64, data: Vec<u8>, description: &'static str| {
+        packets.push(Packet {
+            ts_ns: base + offset_ns,
+            origlen: data.len() as u32,
+            data,
+            description,
+        });
+    };
+    let tcp =
+        |src: ([u8; 6], [u8; 4]), dst: ([u8; 6], [u8; 4]), sport: u16, dport: u16, flags: u8| {
+            ethernet(
+                dst.0,
+                src.0,
+                0x0800,
+                ipv4(
+                    src.1,
+                    dst.1,
+                    6,
+                    sport,
+                    0x4000,
+                    tcp_segment(src.1, dst.1, sport, dport, 1, 1, flags, b""),
+                ),
+            )
+        };
+    let udp = |sport: u16, dport: u16, payload: &[u8]| {
+        ethernet(
+            b_mac,
+            a_mac,
+            0x0800,
+            ipv4(
+                a,
+                b,
+                17,
+                sport,
+                0x4000,
+                udp_datagram(a, b, sport, dport, payload),
+            ),
+        )
+    };
+    let c = (a_mac, a);
+    let s = (b_mac, b);
+
+    add(0, tcp(c, s, 10_001, 80, 0x02), "flow: handshake SYN");
+    add(
+        1_000_000,
+        tcp(s, c, 80, 10_001, 0x12),
+        "flow: handshake SYN-ACK",
+    );
+    add(
+        2_000_000,
+        tcp(c, s, 10_001, 80, 0x10),
+        "flow: handshake ACK",
+    );
+    add(3_000_000, tcp(c, s, 10_001, 80, 0x11), "flow: first FIN");
+    add(
+        4_000_000,
+        tcp(s, c, 80, 10_001, 0x10),
+        "flow: FIN acknowledgement",
+    );
+    add(5_000_000, tcp(s, c, 80, 10_001, 0x11), "flow: second FIN");
+    add(6_000_000, tcp(c, s, 10_001, 80, 0x10), "flow: final ACK");
+
+    add(
+        10_000_000,
+        tcp(c, s, 10_002, 443, 0x02),
+        "flow: one-sided FIN SYN",
+    );
+    add(
+        11_000_000,
+        tcp(c, s, 10_002, 443, 0x11),
+        "flow: one-sided FIN",
+    );
+    add(
+        12_000_000,
+        tcp(s, c, 443, 10_002, 0x10),
+        "flow: ACK after one-sided FIN",
+    );
+
+    add(20_000_000, tcp(c, s, 10_003, 22, 0x02), "flow: reset SYN");
+    add(
+        21_000_000,
+        tcp(s, c, 22, 10_003, 0x14),
+        "flow: reset RST-ACK",
+    );
+
+    add(
+        30_000_000,
+        tcp(c, s, 10_004, 25, 0x02),
+        "flow: timeout first packet",
+    );
+    add(
+        120_030_001_000,
+        tcp(s, c, 25, 10_004, 0x10),
+        "flow: packet beyond 120 second timeout",
+    );
+
+    add(
+        120_040_000_000,
+        udp(20_001, 53, b"active-a"),
+        "flow: activity interval start",
+    );
+    add(
+        126_040_000_000,
+        udp(20_001, 53, b"active-b"),
+        "flow: activity gap exceeds five seconds",
+    );
+    add(
+        126_050_000_000,
+        udp(20_002, 123, b"udp"),
+        "flow: UDP singleton",
+    );
+
+    add(
+        126_060_000_000,
+        ethernet(
+            b_mac,
+            a_mac,
+            0x0800,
+            ipv4(a, b, 1, 0x7001, 0x4000, icmp_echo(8, 7)),
+        ),
+        "flow: ICMP echo request",
+    );
+    add(
+        126_061_000_000,
+        ethernet(
+            a_mac,
+            b_mac,
+            0x0800,
+            ipv4(b, a, 1, 0x7002, 0x4000, icmp_echo(0, 7)),
+        ),
+        "flow: ICMP echo reply",
+    );
+    add(
+        126_070_000_000,
+        tcp(c, s, 10_005, 8080, 0x02),
+        "flow: TCP singleton",
+    );
+
+    add(
+        126_080_000_000,
+        udp(20_003, 9, b"later"),
+        "flow: timestamp regression anchor",
+    );
+    add(
+        126_079_999_123,
+        udp(20_003, 9, b"earlier"),
+        "flow: timestamp moves backward",
+    );
+    packets
+}
+
+fn icmp_echo(icmp_type: u8, identifier: u16) -> Vec<u8> {
+    let mut message = vec![icmp_type, 0, 0, 0];
+    message.extend_from_slice(&identifier.to_be_bytes());
+    message.extend_from_slice(&1u16.to_be_bytes());
+    message.extend_from_slice(b"flow");
+    let checksum = internet_checksum(&message);
+    message[2..4].copy_from_slice(&checksum.to_be_bytes());
+    message
 }
 
 fn raw_packets(ethernet_packets: &[Packet]) -> Vec<Packet> {

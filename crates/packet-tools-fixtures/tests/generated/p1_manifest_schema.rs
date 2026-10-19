@@ -26,6 +26,7 @@ fn manifest_has_one_entry_per_capture_file() {
         BTreeSet::from([
             "be_nsec.pcap",
             "be_usec.pcap",
+            "flows/scenarios.pcap",
             "le_nsec.pcap",
             "le_usec.pcap",
             "le_usec.pcap.gz",

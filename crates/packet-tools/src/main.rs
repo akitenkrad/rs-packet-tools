@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -10,7 +10,11 @@ use packet_tools_capture::{
     Capture, CaptureFormat, CaptureStats, Compression, Container, Endian, OpenOptions, TsResolution,
 };
 use packet_tools_dissect::{DecodeDepth, decode};
-use packet_tools_export::packets::{Field, Format, PacketsWriter, parse_fields};
+use packet_tools_export::{
+    flows::{ColumnNames, FlowsWriter},
+    packets::{Field, Format, PacketsWriter, parse_fields},
+};
+use packet_tools_flow::{FlowConfig, FlowTable, Policy, Preset};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -26,6 +30,8 @@ enum Command {
     Validate(ValidateArgs),
     /// Export one row per packet to Parquet or CSV.
     Packets(PacketsArgs),
+    /// Build bidirectional flows and export one row per completed flow.
+    Flows(FlowsArgs),
 }
 
 #[derive(Args)]
@@ -62,6 +68,39 @@ struct PacketsArgs {
     input: PathBuf,
 }
 
+#[derive(Args)]
+struct FlowsArgs {
+    /// Flow grouping and termination policy.
+    #[arg(long, value_enum, default_value = "corrected")]
+    policy: FlowPolicy,
+    /// Output feature preset.
+    #[arg(long, value_enum, default_value = "cicflowmeter")]
+    preset: FlowPreset,
+    /// Maximum flow age in seconds for compatibility policies.
+    #[arg(long, default_value = "120", value_parser = parse_seconds)]
+    flow_timeout: f64,
+    /// Gap in seconds used for Active/Idle feature statistics.
+    #[arg(long, default_value = "5", value_parser = parse_seconds)]
+    activity_timeout: f64,
+    /// IdleOnly expiration in seconds.
+    #[arg(long, default_value = "60", value_parser = parse_seconds)]
+    idle_timeout: f64,
+    /// Include the outermost VLAN identifier in IdleOnly flow keys.
+    #[arg(long)]
+    vlan_in_key: bool,
+    /// Output column naming convention.
+    #[arg(long, value_enum, default_value = "snake")]
+    column_names: FlowColumnNames,
+    /// Output format; inferred from .parquet or .csv when omitted.
+    #[arg(long, value_enum)]
+    format: Option<OutputFormat>,
+    /// Output file.
+    #[arg(short = 'o', long)]
+    output: PathBuf,
+    /// Input capture.
+    input: PathBuf,
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Parquet,
@@ -73,6 +112,25 @@ enum Depth {
     L2,
     L3,
     L4,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FlowPolicy {
+    Corrected,
+    Cicflowmeter,
+    IdleOnly,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FlowPreset {
+    Cicflowmeter,
+    Minimal,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FlowColumnNames {
+    Snake,
+    Original,
 }
 
 struct FileReport {
@@ -87,7 +145,99 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Validate(args) => validate(args),
         Command::Packets(args) => packets(args),
+        Command::Flows(args) => flows(args),
     }
+}
+
+fn flows(args: FlowsArgs) -> ExitCode {
+    let format = match output_format(args.format, &args.output) {
+        Ok(format) => format,
+        Err(error) => {
+            eprintln!("packet-tools flows: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let policy = match args.policy {
+        FlowPolicy::Corrected => Policy::Corrected,
+        FlowPolicy::Cicflowmeter => Policy::CicFlowMeter,
+        FlowPolicy::IdleOnly => Policy::IdleOnly,
+    };
+    let preset = match args.preset {
+        FlowPreset::Cicflowmeter => Preset::CicFlowMeter,
+        FlowPreset::Minimal => Preset::Minimal,
+    };
+    let names = match args.column_names {
+        FlowColumnNames::Snake => ColumnNames::Snake,
+        FlowColumnNames::Original => ColumnNames::Original,
+    };
+    let mut writer = match FlowsWriter::create(&args.output, format, policy, preset, names) {
+        Ok(writer) => writer,
+        Err(error) => {
+            eprintln!("packet-tools flows: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut capture = match Capture::open(&args.input) {
+        Ok(capture) => capture,
+        Err(error) => {
+            eprintln!("packet-tools flows: {error}");
+            let _ = writer.finish();
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut table = FlowTable::new(FlowConfig {
+        policy,
+        preset,
+        flow_timeout: Duration::from_secs_f64(args.flow_timeout),
+        activity_timeout: Duration::from_secs_f64(args.activity_timeout),
+        idle_timeout: Duration::from_secs_f64(args.idle_timeout),
+        vlan_in_key: args.vlan_in_key,
+    });
+    let mut read_error = None;
+    while let Some(result) = capture.next_record() {
+        let record = match result {
+            Ok(record) => record,
+            Err(error) => {
+                read_error = Some(error.to_string());
+                break;
+            }
+        };
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        for flow in table.push(&record, &packet) {
+            if let Err(error) = writer.push(&flow) {
+                eprintln!("packet-tools flows: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    for flow in table.finish() {
+        if let Err(error) = writer.push(&flow) {
+            eprintln!("packet-tools flows: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
+    if let Err(error) = writer.finish() {
+        eprintln!("packet-tools flows: {error}");
+        return ExitCode::FAILURE;
+    }
+    if let Some(error) = read_error {
+        eprintln!("packet-tools flows: {error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn parse_seconds(value: &str) -> Result<f64, String> {
+    let seconds = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid duration `{value}`"))?;
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err(format!(
+            "duration must be a finite non-negative number: `{value}`"
+        ));
+    }
+    Ok(seconds)
 }
 
 fn packets(args: PacketsArgs) -> ExitCode {

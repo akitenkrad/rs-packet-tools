@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "=0.4.10"
 packet-tools-capture = { path = "../crates/packet-tools-capture" }
 packet-tools-dissect = { path = "../crates/packet-tools-dissect" }
+packet-tools-flow = { path = "../crates/packet-tools-flow" }
 
 [[bin]]
 name = "dissect"
@@ -22,6 +23,13 @@ bench = false
 [[bin]]
 name = "capture"
 path = "fuzz_targets/capture.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "flow"
+path = "fuzz_targets/flow.rs"
 test = false
 doc = false
 bench = false

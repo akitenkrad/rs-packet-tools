@@ -1045,6 +1045,7 @@ dependencies = [
  "arrow",
  "packet-tools-capture",
  "packet-tools-dissect",
+ "packet-tools-flow",
  "parquet",
  "tempfile",
  "thiserror 2.0.21",
@@ -1067,6 +1068,10 @@ dependencies = [
 [[package]]
 name = "packet-tools-flow"
 version = "0.1.0"
+dependencies = [
+ "packet-tools-capture",
+ "packet-tools-dissect",
+]
 
 [[package]]
 name = "packet-tools-reassembly"

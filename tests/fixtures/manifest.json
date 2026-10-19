@@ -400,6 +400,236 @@
       ],
       "sha256": "562edd140dd11e404840071e7138d2bc594b3a1042cc9a4fe86ba604d30fb9fc"
     },
+    "flows/scenarios.pcap": {
+      "format": "pcap",
+      "endianness": "little",
+      "ts_resolution": "nanosecond",
+      "compressed": false,
+      "packet_count": 22,
+      "packets": [
+        {
+          "index": 0,
+          "ts_ns": 1700000000000000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: handshake SYN"
+        },
+        {
+          "index": 1,
+          "ts_ns": 1700000000001000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: handshake SYN-ACK"
+        },
+        {
+          "index": 2,
+          "ts_ns": 1700000000002000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: handshake ACK"
+        },
+        {
+          "index": 3,
+          "ts_ns": 1700000000003000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: first FIN"
+        },
+        {
+          "index": 4,
+          "ts_ns": 1700000000004000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: FIN acknowledgement"
+        },
+        {
+          "index": 5,
+          "ts_ns": 1700000000005000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: second FIN"
+        },
+        {
+          "index": 6,
+          "ts_ns": 1700000000006000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: final ACK"
+        },
+        {
+          "index": 7,
+          "ts_ns": 1700000000010000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: one-sided FIN SYN"
+        },
+        {
+          "index": 8,
+          "ts_ns": 1700000000011000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: one-sided FIN"
+        },
+        {
+          "index": 9,
+          "ts_ns": 1700000000012000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: ACK after one-sided FIN"
+        },
+        {
+          "index": 10,
+          "ts_ns": 1700000000020000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: reset SYN"
+        },
+        {
+          "index": 11,
+          "ts_ns": 1700000000021000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: reset RST-ACK"
+        },
+        {
+          "index": 12,
+          "ts_ns": 1700000000030000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: timeout first packet"
+        },
+        {
+          "index": 13,
+          "ts_ns": 1700000120030001000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: packet beyond 120 second timeout"
+        },
+        {
+          "index": 14,
+          "ts_ns": 1700000120040000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: activity interval start"
+        },
+        {
+          "index": 15,
+          "ts_ns": 1700000126040000000,
+          "caplen": 50,
+          "origlen": 50,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: activity gap exceeds five seconds"
+        },
+        {
+          "index": 16,
+          "ts_ns": 1700000126050000000,
+          "caplen": 45,
+          "origlen": 45,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: UDP singleton"
+        },
+        {
+          "index": 17,
+          "ts_ns": 1700000126060000000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: ICMP echo request"
+        },
+        {
+          "index": 18,
+          "ts_ns": 1700000126061000000,
+          "caplen": 46,
+          "origlen": 46,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: ICMP echo reply"
+        },
+        {
+          "index": 19,
+          "ts_ns": 1700000126070000000,
+          "caplen": 54,
+          "origlen": 54,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: TCP singleton"
+        },
+        {
+          "index": 20,
+          "ts_ns": 1700000126080000000,
+          "caplen": 47,
+          "origlen": 47,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: timestamp regression anchor"
+        },
+        {
+          "index": 21,
+          "ts_ns": 1700000126079999123,
+          "caplen": 49,
+          "origlen": 49,
+          "linktype": 1,
+          "interface": 0,
+          "first_byte": 2,
+          "description": "flow: timestamp moves backward"
+        }
+      ],
+      "sha256": "5b168ae04d24e88c99b75df4a68c0c8d36d792f45c925457810933384764d8ee"
+    },
     "le_nsec.pcap": {
       "format": "pcap",
       "endianness": "little",

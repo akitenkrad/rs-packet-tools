@@ -36,7 +36,7 @@ fn validate_json_reports_every_fixture_and_a_total() {
     assert_eq!(values.len(), manifest.files.len() + 1);
     for value in &values[..manifest.files.len()] {
         let name = PathBuf::from(value["path"].as_str().unwrap())
-            .file_name()
+            .strip_prefix(&root)
             .unwrap()
             .to_str()
             .unwrap()
@@ -45,8 +45,8 @@ fn validate_json_reports_every_fixture_and_a_total() {
         assert!(value["error"].is_null());
     }
     assert_eq!(values.last().unwrap()["type"], "total");
-    assert_eq!(values.last().unwrap()["packets"], 117);
-    assert_eq!(values.last().unwrap()["regressions"], 6);
+    assert_eq!(values.last().unwrap()["packets"], 139);
+    assert_eq!(values.last().unwrap()["regressions"], 7);
 }
 
 #[test]

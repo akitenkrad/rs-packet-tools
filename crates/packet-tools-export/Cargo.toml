@@ -14,6 +14,7 @@ path = "src/lib.rs"
 arrow.workspace = true
 packet-tools-capture = { path = "../packet-tools-capture" }
 packet-tools-dissect = { path = "../packet-tools-dissect" }
+packet-tools-flow = { path = "../packet-tools-flow" }
 parquet.workspace = true
 thiserror.workspace = true
 

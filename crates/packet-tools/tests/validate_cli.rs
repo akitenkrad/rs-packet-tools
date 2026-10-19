@@ -45,7 +45,14 @@ fn validate_json_reports_every_fixture_and_a_total() {
         assert!(value["error"].is_null());
     }
     assert_eq!(values.last().unwrap()["type"], "total");
-    assert_eq!(values.last().unwrap()["packets"], 139);
+    assert_eq!(
+        values.last().unwrap()["packets"],
+        manifest
+            .files
+            .values()
+            .map(|file| file.packet_count)
+            .sum::<u64>()
+    );
     assert_eq!(values.last().unwrap()["regressions"], 7);
 }
 

@@ -1,0 +1,1295 @@
+{
+ "source": "OISF/suricata src/tests/stream-tcp-list.c (commit b717c48, 2026-10-14), Overlap* tests. Facts only.",
+ "note": "Each step adds one segment at ISN + rel_seq (data starts at ISN+1 for rel_seq 1). 'expected' is the stream buffer after the step starting at ISN+1, '.' marks a byte not yet received (gap). The tests are run with several ISNs, including values near the 32-bit wrap.",
+ "isns_used_in_source": [
+  0,
+  1,
+  4294967295
+ ],
+ "cases": [
+  {
+   "name": "OverlapBSD",
+   "policy": "bsd",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AAAJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AAAJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AAAJJBCCCLLL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHIQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AAAJJBCCCLLLMMMFFFGGHHIQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapBSDBefore",
+   "policy": "bsd",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AA.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JJJJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JJJJ...LLL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JJJJ...LLLMMM"
+    }
+   ]
+  },
+  {
+   "name": "OverlapBSDSame",
+   "policy": "bsd",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "CCCL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "CCCL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "CCCL..........HHII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapBSDAfter",
+   "policy": "bsd",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AAJ............FFFGG"
+    }
+   ]
+  },
+  {
+   "name": "OverlapVISTA",
+   "policy": "vista",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AAAJBBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AAAJBBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AAAJBBCCCLDL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AAAJBBCCCLDLMEEFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AAAJBBCCCLDLMEEFFFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AAAJBBCCCLDLMEEFFFGGHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AAAJBBCCCLDLMEEFFFGGHHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AAAJBBCCCLDLMEEFFFGGHHIQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AAAJBBCCCLDLMEEFFFGGHHIQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapVISTABefore",
+   "policy": "vista",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AB.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JABJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JABJ...LDL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JABJ...LDLMEE"
+    }
+   ]
+  },
+  {
+   "name": "OverlapVISTASame",
+   "policy": "vista",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "CCCL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "CCCL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "CCCL..........HHII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapVISTAAfter",
+   "policy": "vista",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AAJ............FFFGG"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUX",
+   "policy": "linux",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AAAJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AAAJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AAAJJBCCCLLL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AAAJJBCCCLLLMMMFFFGGHHQQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AAAJJBCCCLLLMMMFFFGGHHQQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXBefore",
+   "policy": "linux",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AA.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JJJJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JJJJ...LLL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JJJJ...LLLMMM"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXSame",
+   "policy": "linux",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "LLLL..........HHII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXAfter",
+   "policy": "linux",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AAJ............FFFGG"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXOLD",
+   "policy": "old_linux",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AAAJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AAAJJBKKK.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AAAJJBKKKLLL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AAAJJBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AAAJJBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AAAJJBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AAAJJBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AAAJJBKKKLLLMMMFFFGGHHQQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AAAJJBKKKLLLMMMFFFGGHHQQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXOLDBefore",
+   "policy": "old_linux",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AA.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JJJJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JJJJ...LLL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JJJJ...LLLMMM"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXOLDSame",
+   "policy": "old_linux",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "KKK...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "LLLL..........QQII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLINUXOLDAfter",
+   "policy": "old_linux",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AAJ............FFFGG"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AAJ............FFFGG"
+    }
+   ]
+  },
+  {
+   "name": "OverlapSOLARIS",
+   "policy": "solaris",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AJJJBBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AJJJBBKKK.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AJJJBBKKKLLL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AJJJBBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AJJJBBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AJJJBBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AJJJBBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AJJJBBKKKLLLMMMFFFGGHHQQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AJJJBBKKKLLLMMMFFFGGHHQQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapSOLARISBefore",
+   "policy": "solaris",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AA.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JJJJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JJJJ...LLL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JJJJ...LLLMMM"
+    }
+   ]
+  },
+  {
+   "name": "OverlapSOLARISSame",
+   "policy": "solaris",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "KKK...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "LLLL..........QQII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapSOLARISAfter",
+   "policy": "solaris",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AJJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AJJ............FFFGG"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AJJ............FFFGG"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLAST",
+   "policy": "last",
+   "steps": [
+    {
+     "rel_seq": 2,
+     "data": "AAA",
+     "expected": ".AAA"
+    },
+    {
+     "rel_seq": 6,
+     "data": "BB",
+     "expected": ".AAA.BB"
+    },
+    {
+     "rel_seq": 8,
+     "data": "CCC",
+     "expected": ".AAA.BBCCC"
+    },
+    {
+     "rel_seq": 12,
+     "data": "D",
+     "expected": ".AAA.BBCCC.D"
+    },
+    {
+     "rel_seq": 15,
+     "data": "EE",
+     "expected": ".AAA.BBCCC.D..EE"
+    },
+    {
+     "rel_seq": 17,
+     "data": "FFF",
+     "expected": ".AAA.BBCCC.D..EEFFF"
+    },
+    {
+     "rel_seq": 20,
+     "data": "GG",
+     "expected": ".AAA.BBCCC.D..EEFFFGG"
+    },
+    {
+     "rel_seq": 22,
+     "data": "HH",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHH"
+    },
+    {
+     "rel_seq": 24,
+     "data": "I",
+     "expected": ".AAA.BBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 3,
+     "data": "JJJJ",
+     "expected": ".AJJJJBCCC.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 8,
+     "data": "KKK",
+     "expected": ".AJJJJBKKK.D..EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 11,
+     "data": "LLL",
+     "expected": ".AJJJJBKKKLLL.EEFFFGGHHI"
+    },
+    {
+     "rel_seq": 14,
+     "data": "MMM",
+     "expected": ".AJJJJBKKKLLLMMMFFFGGHHI"
+    },
+    {
+     "rel_seq": 18,
+     "data": "N",
+     "expected": ".AJJJJBKKKLLLMMMFNFGGHHI"
+    },
+    {
+     "rel_seq": 21,
+     "data": "O",
+     "expected": ".AJJJJBKKKLLLMMMFNFGOHHI"
+    },
+    {
+     "rel_seq": 22,
+     "data": "P",
+     "expected": ".AJJJJBKKKLLLMMMFNFGOPHI"
+    },
+    {
+     "rel_seq": 24,
+     "data": "QQ",
+     "expected": ".AJJJJBKKKLLLMMMFNFGOPHQQ"
+    },
+    {
+     "rel_seq": 1,
+     "data": "0",
+     "expected": "0AJJJJBKKKLLLMMMFNFGOPHQQ"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLASTBefore",
+   "policy": "last",
+   "steps": [
+    {
+     "rel_seq": 3,
+     "data": "B",
+     "expected": "..B"
+    },
+    {
+     "rel_seq": 9,
+     "data": "D",
+     "expected": "..B.....D"
+    },
+    {
+     "rel_seq": 12,
+     "data": "EE",
+     "expected": "..B.....D..EE"
+    },
+    {
+     "rel_seq": 2,
+     "data": "AA",
+     "expected": ".AA.....D..EE"
+    },
+    {
+     "rel_seq": 1,
+     "data": "JJJJ",
+     "expected": "JJJJ....D..EE"
+    },
+    {
+     "rel_seq": 8,
+     "data": "LLL",
+     "expected": "JJJJ...LLL.EE"
+    },
+    {
+     "rel_seq": 11,
+     "data": "MMM",
+     "expected": "JJJJ...LLLMMM"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLASTSame",
+   "policy": "last",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "CCC",
+     "expected": "CCC"
+    },
+    {
+     "rel_seq": 15,
+     "data": "HH",
+     "expected": "CCC...........HH"
+    },
+    {
+     "rel_seq": 17,
+     "data": "II",
+     "expected": "CCC...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "KKK",
+     "expected": "KKK...........HHII"
+    },
+    {
+     "rel_seq": 1,
+     "data": "LLLL",
+     "expected": "LLLL..........HHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "P",
+     "expected": "LLLL..........PHII"
+    },
+    {
+     "rel_seq": 15,
+     "data": "QQ",
+     "expected": "LLLL..........QQII"
+    }
+   ]
+  },
+  {
+   "name": "OverlapLASTAfter",
+   "policy": "last",
+   "steps": [
+    {
+     "rel_seq": 1,
+     "data": "AA",
+     "expected": "AA"
+    },
+    {
+     "rel_seq": 16,
+     "data": "FFF",
+     "expected": "AA.............FFF"
+    },
+    {
+     "rel_seq": 19,
+     "data": "GG",
+     "expected": "AA.............FFFGG"
+    },
+    {
+     "rel_seq": 2,
+     "data": "JJ",
+     "expected": "AJJ............FFFGG"
+    },
+    {
+     "rel_seq": 20,
+     "data": "O",
+     "expected": "AJJ............FFFGO"
+    },
+    {
+     "rel_seq": 17,
+     "data": "N",
+     "expected": "AJJ............FNFGO"
+    }
+   ]
+  }
+ ]
+}

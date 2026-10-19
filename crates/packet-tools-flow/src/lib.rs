@@ -14,6 +14,49 @@ use packet_tools_dissect::{
     Icmpv4View, Icmpv6View, Ipv4View, Ipv6View, Packet, TcpView, UdpView, VlanView,
 };
 
+/// A direction-independent key used by the stable packet-tools flow identifier.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct FlowIdentityKey {
+    pub first_ip: IpAddr,
+    pub second_ip: IpAddr,
+    pub first_port: u16,
+    pub second_port: u16,
+    pub protocol: u8,
+    pub vlan: Option<u16>,
+    pub icmp_type: Option<u8>,
+    pub icmp_id: Option<u16>,
+}
+
+impl FlowIdentityKey {
+    /// Builds a key with endpoints sorted by address bytes and then port.
+    pub fn normalized(
+        src: IpAddr,
+        dst: IpAddr,
+        src_port: u16,
+        dst_port: u16,
+        protocol: u8,
+        vlan: Option<u16>,
+    ) -> Self {
+        let left = (ip_sort_bytes(src), src_port);
+        let right = (ip_sort_bytes(dst), dst_port);
+        let (first_ip, second_ip, first_port, second_port) = if left <= right {
+            (src, dst, src_port, dst_port)
+        } else {
+            (dst, src, dst_port, src_port)
+        };
+        Self {
+            first_ip,
+            second_ip,
+            first_port,
+            second_port,
+            protocol,
+            vlan,
+            icmp_type: None,
+            icmp_id: None,
+        }
+    }
+}
+
 mod columns;
 pub use columns::{Column, ColumnType, cicflowmeter_columns};
 
@@ -664,7 +707,8 @@ impl FlowState {
     }
 
     fn complete(self, end_reason: EndReason) -> Flow {
-        let flow_uid = flow_uid(&self.initial_key.normalized(), self.first_raw_ts_ns);
+        let flow_uid =
+            flow_uid_for_directional(&self.initial_key.normalized(), self.first_raw_ts_ns);
         let compatibility_values = self.build_compatibility_values();
         Flow {
             flow_uid,
@@ -1482,9 +1526,26 @@ fn ip_sort_bytes(ip: IpAddr) -> [u8; 17] {
 /// endpoint address and port, second endpoint address and port, ICMP type/identifier presence and
 /// value, then the first timestamp as a signed big-endian nanosecond value. Endpoints are sorted by
 /// address bytes followed by port before hashing.
-fn flow_uid(key: &DirectionalKey, first_ts_ns: i64) -> u64 {
+fn flow_uid_for_directional(key: &DirectionalKey, first_ts_ns: i64) -> u64 {
+    flow_uid(
+        &FlowIdentityKey {
+            first_ip: key.src,
+            second_ip: key.dst,
+            first_port: key.src_port,
+            second_port: key.dst_port,
+            protocol: key.protocol,
+            vlan: key.vlan,
+            icmp_type: key.icmp_type,
+            icmp_id: key.icmp_id,
+        },
+        first_ts_ns,
+    )
+}
+
+/// Computes the stable FNV-1a identifier shared by flow and reassembly crates.
+pub fn flow_uid(key: &FlowIdentityKey, first_ts_ns: i64) -> u64 {
     let mut bytes = Vec::with_capacity(64);
-    bytes.push(match key.src {
+    bytes.push(match key.first_ip {
         IpAddr::V4(_) => 4,
         IpAddr::V6(_) => 6,
     });
@@ -1496,10 +1557,10 @@ fn flow_uid(key: &DirectionalKey, first_ts_ns: i64) -> u64 {
         }
         None => bytes.push(0),
     }
-    append_ip(&mut bytes, key.src);
-    bytes.extend_from_slice(&key.src_port.to_be_bytes());
-    append_ip(&mut bytes, key.dst);
-    bytes.extend_from_slice(&key.dst_port.to_be_bytes());
+    append_ip(&mut bytes, key.first_ip);
+    bytes.extend_from_slice(&key.first_port.to_be_bytes());
+    append_ip(&mut bytes, key.second_ip);
+    bytes.extend_from_slice(&key.second_port.to_be_bytes());
     match key.icmp_type {
         Some(value) => {
             bytes.push(1);

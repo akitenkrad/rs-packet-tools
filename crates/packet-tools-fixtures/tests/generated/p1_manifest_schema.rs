@@ -31,6 +31,7 @@ fn manifest_has_one_entry_per_capture_file() {
             "le_usec.pcap",
             "le_usec.pcap.gz",
             "multi_iface.pcapng",
+            "reassembly/scenarios.pcap",
         ])
     );
 }

@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 use flate2::{Compression, GzBuilder};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const BASE_SECONDS: u64 = 1_700_000_000;
@@ -176,6 +176,26 @@ fn generate(out: &Path) -> io::Result<()> {
             false,
             ethernet_manifest(&flows),
             &flow_bytes,
+        ),
+    );
+
+    let reassembly = reassembly_packets();
+    let reassembly_bytes = write_pcap(
+        &reassembly,
+        ByteOrder::Little,
+        TimestampResolution::Nanosecond,
+    );
+    fs::create_dir_all(out.join("reassembly"))?;
+    write_file(out, "reassembly/scenarios.pcap", &reassembly_bytes)?;
+    files.insert(
+        "reassembly/scenarios.pcap".to_owned(),
+        manifest_file(
+            "pcap",
+            "little",
+            "nanosecond",
+            false,
+            ethernet_manifest(&reassembly),
+            &reassembly_bytes,
         ),
     );
 
@@ -816,6 +836,689 @@ fn flow_packets() -> Vec<Packet> {
         "flow: timestamp moves backward",
     );
     packets
+}
+
+#[derive(Deserialize)]
+struct ReassemblyIpVectors {
+    ipv4_fragments: Vec<ReassemblyFragment>,
+    ipv6_fragments: Vec<ReassemblyFragment>,
+}
+
+#[derive(Deserialize)]
+struct ReassemblyFragment {
+    offset: usize,
+    more_fragments: bool,
+    fill: char,
+    len: usize,
+}
+
+#[derive(Deserialize)]
+struct ReassemblyTcpVectors {
+    cases: Vec<ReassemblyTcpCase>,
+}
+
+#[derive(Deserialize)]
+struct ReassemblyTcpCase {
+    steps: Vec<ReassemblyTcpStep>,
+}
+
+#[derive(Deserialize)]
+struct ReassemblyTcpStep {
+    rel_seq: u32,
+    data: String,
+}
+
+fn reassembly_packets() -> Vec<Packet> {
+    let ip_vectors: ReassemblyIpVectors = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/reassembly/sturges_novak_ip.json"
+    ))
+    .expect("committed IP reassembly vectors");
+    let tcp_vectors: ReassemblyTcpVectors = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/reassembly/sturges_novak_tcp.json"
+    ))
+    .expect("committed TCP reassembly vectors");
+    let client = [10, 10, 0, 1];
+    let server = [10, 10, 0, 2];
+    let client_mac = [0x02, 0, 0, 0, 2, 1];
+    let server_mac = [0x02, 0, 0, 0, 2, 2];
+    let base = BASE_SECONDS * 1_000_000_000 + 200_000_000_000;
+    let mut packets = Vec::new();
+    let mut add = |data: Vec<u8>, description: &'static str| {
+        let ts_ns = base + packets.len() as u64 * 1_000;
+        packets.push(Packet {
+            ts_ns,
+            origlen: data.len() as u32,
+            data,
+            description,
+        });
+    };
+
+    for fragment in &ip_vectors.ipv4_fragments {
+        let payload = vec![fragment.fill as u8; fragment.len];
+        let field = u16::try_from(fragment.offset / 8).unwrap()
+            | if fragment.more_fragments { 0x2000 } else { 0 };
+        add(
+            ethernet(
+                server_mac,
+                client_mac,
+                0x0800,
+                ipv4(client, server, 1, 0x9000, field, payload),
+            ),
+            "reassembly: Sturges-Novak IPv4 fragment",
+        );
+    }
+    let src6 = [0x20, 1, 0xdb, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    let dst6 = [0x20, 1, 0xdb, 8, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+    for fragment in &ip_vectors.ipv6_fragments {
+        let payload = vec![fragment.fill as u8; fragment.len];
+        add(
+            ethernet(
+                server_mac,
+                client_mac,
+                0x86dd,
+                ipv6_fragment(
+                    src6,
+                    dst6,
+                    58,
+                    0x9000_0001,
+                    fragment.offset,
+                    fragment.more_fragments,
+                    &payload,
+                    false,
+                ),
+            ),
+            "reassembly: Sturges-Novak IPv6 fragment",
+        );
+    }
+
+    for (case_index, case) in tcp_vectors.cases.iter().enumerate() {
+        let sport = 20_000 + case_index as u16;
+        let client_isn = if case_index % 3 == 2 {
+            u32::MAX
+        } else {
+            1_000 + case_index as u32 * 100
+        };
+        let server_isn = 50_000 + case_index as u32 * 100;
+        for (
+            src,
+            dst,
+            src_mac,
+            dst_mac,
+            src_port,
+            dst_port,
+            seq,
+            ack,
+            flags,
+            payload,
+            description,
+        ) in [
+            (
+                client,
+                server,
+                client_mac,
+                server_mac,
+                sport,
+                80,
+                client_isn,
+                0,
+                0x02,
+                &b""[..],
+                "reassembly: TCP overlap SYN",
+            ),
+            (
+                server,
+                client,
+                server_mac,
+                client_mac,
+                80,
+                sport,
+                server_isn,
+                client_isn.wrapping_add(1),
+                0x12,
+                &b""[..],
+                "reassembly: TCP overlap SYN-ACK",
+            ),
+            (
+                client,
+                server,
+                client_mac,
+                server_mac,
+                sport,
+                80,
+                client_isn.wrapping_add(1),
+                server_isn.wrapping_add(1),
+                0x10,
+                &b""[..],
+                "reassembly: TCP overlap ACK",
+            ),
+        ] {
+            add(
+                ethernet(
+                    dst_mac,
+                    src_mac,
+                    0x0800,
+                    ipv4(
+                        src,
+                        dst,
+                        6,
+                        sport,
+                        0x4000,
+                        tcp_segment(src, dst, src_port, dst_port, seq, ack, flags, payload),
+                    ),
+                ),
+                description,
+            );
+        }
+        for step in &case.steps {
+            add(
+                ethernet(
+                    server_mac,
+                    client_mac,
+                    0x0800,
+                    ipv4(
+                        client,
+                        server,
+                        6,
+                        sport,
+                        0x4000,
+                        tcp_segment(
+                            client,
+                            server,
+                            sport,
+                            80,
+                            client_isn.wrapping_add(step.rel_seq),
+                            server_isn.wrapping_add(1),
+                            0x18,
+                            step.data.as_bytes(),
+                        ),
+                    ),
+                ),
+                "reassembly: TCP overlap vector step",
+            );
+        }
+    }
+
+    for (payload, offset, more, description) in [
+        (
+            vec![0x8f, 0x97, 0x99, b'x', b'x', b'x', b'x', b'x'],
+            0,
+            true,
+            "reassembly: ptacek1998 IPv4 first",
+        ),
+        (
+            vec![b'p', b'h', b'f', b'y', b'y', b'y', b'y', b'y'],
+            0,
+            true,
+            "reassembly: ptacek1998 IPv4 conflicting",
+        ),
+        (vec![b'!'; 8], 8, false, "reassembly: ptacek1998 IPv4 final"),
+    ] {
+        let field = u16::try_from(offset / 8).unwrap() | if more { 0x2000 } else { 0 };
+        add(
+            ethernet(
+                server_mac,
+                client_mac,
+                0x0800,
+                ipv4(client, server, 1, 0x9001, field, payload),
+            ),
+            description,
+        );
+    }
+
+    let midstream = tcp_segment(client, server, 30_001, 8080, 700, 0, 0x18, b"midstream");
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(client, server, 6, 0x9100, 0x4000, midstream),
+        ),
+        "reassembly: midstream TCP",
+    );
+    for (seq, payload, description) in [
+        (
+            u32::MAX,
+            b"W".as_slice(),
+            "reassembly: wrap byte before zero",
+        ),
+        (1, b"Z".as_slice(), "reassembly: reordered byte after zero"),
+        (0, b"0".as_slice(), "reassembly: wrap byte at zero"),
+        (0, b"0".as_slice(), "reassembly: identical retransmission"),
+    ] {
+        add(
+            ethernet(
+                server_mac,
+                client_mac,
+                0x0800,
+                ipv4(
+                    client,
+                    server,
+                    6,
+                    0x9101,
+                    0x4000,
+                    tcp_segment(client, server, 30_002, 8081, seq, 0, 0x18, payload),
+                ),
+            ),
+            description,
+        );
+    }
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(
+                client,
+                server,
+                6,
+                0x9102,
+                0x4000,
+                tcp_segment(client, server, 30_003, 8082, 10, 0, 0x18, b"gap"),
+            ),
+        ),
+        "reassembly: capture-end gap",
+    );
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(
+                client,
+                server,
+                6,
+                0x9103,
+                0x4000,
+                tcp_segment(client, server, 30_004, 8083, 10, 0, 0x04, b""),
+            ),
+        ),
+        "reassembly: in-window RST",
+    );
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(
+                client,
+                server,
+                6,
+                0x9104,
+                0x4000,
+                tcp_segment(client, server, 30_005, 8084, 1_000_000, 0, 0x04, b""),
+            ),
+        ),
+        "reassembly: out-of-window RST",
+    );
+
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x86dd,
+            ipv6_fragment(src6, dst6, 58, 0x9000_0002, 0, true, &[3; 16], true),
+        ),
+        "reassembly: IPv6 extension fragment first",
+    );
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x86dd,
+            ipv6_fragment(src6, dst6, 58, 0x9000_0002, 16, false, &[4; 8], true),
+        ),
+        "reassembly: IPv6 extension fragment final",
+    );
+
+    let fragmented_tcp = tcp_segment(
+        client,
+        server,
+        30_006,
+        8085,
+        100,
+        0,
+        0x18,
+        b"fragmented-tcp",
+    );
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(
+                client,
+                server,
+                6,
+                0x9200,
+                0x2000,
+                fragmented_tcp[..24].to_vec(),
+            ),
+        ),
+        "reassembly: fragmented TCP first",
+    );
+    add(
+        ethernet(
+            server_mac,
+            client_mac,
+            0x0800,
+            ipv4(client, server, 6, 0x9200, 3, fragmented_tcp[24..].to_vec()),
+        ),
+        "reassembly: fragmented TCP final",
+    );
+
+    let mut add_tcp = |src: [u8; 4],
+                       dst: [u8; 4],
+                       src_mac: [u8; 6],
+                       dst_mac: [u8; 6],
+                       src_port: u16,
+                       dst_port: u16,
+                       seq: u32,
+                       ack: u32,
+                       flags: u8,
+                       payload: &[u8],
+                       description: &'static str| {
+        add(
+            ethernet(
+                dst_mac,
+                src_mac,
+                0x0800,
+                ipv4(
+                    src,
+                    dst,
+                    6,
+                    src_port,
+                    0x4000,
+                    tcp_segment(src, dst, src_port, dst_port, seq, ack, flags, payload),
+                ),
+            ),
+            description,
+        );
+    };
+
+    type AddTcp<'a> = dyn FnMut([u8; 4], [u8; 4], [u8; 6], [u8; 6], u16, u16, u32, u32, u8, &[u8], &'static str)
+        + 'a;
+    let handshake = |add_tcp: &mut AddTcp<'_>, sport: u16, client_isn: u32, server_isn: u32| {
+        add_tcp(
+            client,
+            server,
+            client_mac,
+            server_mac,
+            sport,
+            80,
+            client_isn,
+            0,
+            0x02,
+            b"",
+            "reassembly: lifecycle SYN",
+        );
+        add_tcp(
+            server,
+            client,
+            server_mac,
+            client_mac,
+            80,
+            sport,
+            server_isn,
+            client_isn.wrapping_add(1),
+            0x12,
+            b"",
+            "reassembly: lifecycle SYN-ACK",
+        );
+        add_tcp(
+            client,
+            server,
+            client_mac,
+            server_mac,
+            sport,
+            80,
+            client_isn.wrapping_add(1),
+            server_isn.wrapping_add(1),
+            0x10,
+            b"",
+            "reassembly: lifecycle ACK",
+        );
+    };
+
+    handshake(&mut add_tcp, 31_000, 100, 500);
+    add_tcp(
+        client,
+        server,
+        client_mac,
+        server_mac,
+        31_000,
+        80,
+        101,
+        501,
+        0x14,
+        b"",
+        "reassembly: accepted RST before post-close data",
+    );
+    add_tcp(
+        server,
+        client,
+        server_mac,
+        client_mac,
+        80,
+        31_000,
+        501,
+        101,
+        0x18,
+        b"late",
+        "reassembly: data after RST close",
+    );
+
+    handshake(&mut add_tcp, 31_001, 200, 600);
+    for (src, dst, src_mac, dst_mac, sport, dport, seq, ack, flags, description) in [
+        (
+            client,
+            server,
+            client_mac,
+            server_mac,
+            31_001,
+            80,
+            201,
+            601,
+            0x11,
+            "reassembly: client FIN",
+        ),
+        (
+            server,
+            client,
+            server_mac,
+            client_mac,
+            80,
+            31_001,
+            601,
+            202,
+            0x10,
+            "reassembly: client FIN ACK",
+        ),
+        (
+            server,
+            client,
+            server_mac,
+            client_mac,
+            80,
+            31_001,
+            601,
+            202,
+            0x11,
+            "reassembly: server FIN",
+        ),
+        (
+            client,
+            server,
+            client_mac,
+            server_mac,
+            31_001,
+            80,
+            202,
+            602,
+            0x10,
+            "reassembly: server FIN ACK",
+        ),
+    ] {
+        add_tcp(
+            src,
+            dst,
+            src_mac,
+            dst_mac,
+            sport,
+            dport,
+            seq,
+            ack,
+            flags,
+            b"",
+            description,
+        );
+    }
+    add_tcp(
+        server,
+        client,
+        server_mac,
+        client_mac,
+        80,
+        31_001,
+        602,
+        202,
+        0x18,
+        b"f",
+        "reassembly: data after completed FIN close",
+    );
+
+    handshake(&mut add_tcp, 31_002, 300, 700);
+    add_tcp(
+        client,
+        server,
+        client_mac,
+        server_mac,
+        31_002,
+        80,
+        301,
+        701,
+        0x14,
+        b"",
+        "reassembly: RST before closing timeout",
+    );
+
+    handshake(&mut add_tcp, 31_003, 400, 800);
+    add_tcp(
+        client,
+        server,
+        client_mac,
+        server_mac,
+        31_003,
+        80,
+        401,
+        801,
+        0x14,
+        b"",
+        "reassembly: RST before replacement SYN",
+    );
+    add_tcp(
+        client,
+        server,
+        client_mac,
+        server_mac,
+        31_003,
+        80,
+        900,
+        0,
+        0x02,
+        b"",
+        "reassembly: replacement SYN before closing timeout",
+    );
+
+    handshake(&mut add_tcp, 31_004, 1_000, 2_000);
+    for (seq, flags, payload, description) in [
+        (
+            1_001,
+            0x18,
+            b"abc".as_slice(),
+            "reassembly: keepalive base data",
+        ),
+        (
+            1_003,
+            0x10,
+            b"x".as_slice(),
+            "reassembly: one-byte keepalive",
+        ),
+        (1_003, 0x10, b"".as_slice(), "reassembly: empty keepalive"),
+        (
+            1_004,
+            0x18,
+            b"z".as_slice(),
+            "reassembly: ordinary one-byte data after keepalives",
+        ),
+    ] {
+        add_tcp(
+            client,
+            server,
+            client_mac,
+            server_mac,
+            31_004,
+            80,
+            seq,
+            2_001,
+            flags,
+            payload,
+            description,
+        );
+    }
+
+    add_tcp(
+        server,
+        client,
+        server_mac,
+        client_mac,
+        80,
+        31_002,
+        900,
+        0,
+        0x18,
+        b"new",
+        "reassembly: midstream data after closing timeout",
+    );
+    drop(add_tcp);
+    drop(add);
+    let last = packets.len() - 1;
+    packets[last].ts_ns = packets[last - 1].ts_ns + 61_000_000_000;
+    packets
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ipv6_fragment(
+    src: [u8; 16],
+    dst: [u8; 16],
+    upper: u8,
+    identification: u32,
+    offset: usize,
+    more: bool,
+    payload: &[u8],
+    extension_before_fragment: bool,
+) -> Vec<u8> {
+    let extension_len = usize::from(extension_before_fragment) * 8;
+    let mut packet = Vec::with_capacity(48 + extension_len + payload.len());
+    packet.extend_from_slice(&0x6000_0000u32.to_be_bytes());
+    packet.extend_from_slice(
+        &u16::try_from(extension_len + 8 + payload.len())
+            .unwrap()
+            .to_be_bytes(),
+    );
+    packet.push(if extension_before_fragment { 0 } else { 44 });
+    packet.push(64);
+    packet.extend_from_slice(&src);
+    packet.extend_from_slice(&dst);
+    if extension_before_fragment {
+        packet.extend_from_slice(&[44, 0, 0, 0, 0, 0, 0, 0]);
+    }
+    packet.push(upper);
+    packet.push(0);
+    let field = u16::try_from(offset).unwrap() | u16::from(more);
+    packet.extend_from_slice(&field.to_be_bytes());
+    packet.extend_from_slice(&identification.to_be_bytes());
+    packet.extend_from_slice(payload);
+    packet
 }
 
 fn icmp_echo(icmp_type: u8, identifier: u16) -> Vec<u8> {

@@ -1,0 +1,238 @@
+{
+ "source": "Sturges & Novak overlap test, as encoded in OISF/suricata src/defrag.c (commit b717c48, 2026-10-14) DefragDoSturgesNovakTest / DefragDoSturgesNovakIpv6Test. Facts only (fragment layout and expected bytes).",
+ "note": "Fragments are delivered in the listed order; the expected payload is 192 bytes, given as 24 blocks of 8 bytes, each block a single fill letter.",
+ "ipv4_fragments": [
+  {
+   "offset": 0,
+   "more_fragments": true,
+   "fill": "A",
+   "len": 24
+  },
+  {
+   "offset": 32,
+   "more_fragments": true,
+   "fill": "B",
+   "len": 16
+  },
+  {
+   "offset": 48,
+   "more_fragments": true,
+   "fill": "C",
+   "len": 24
+  },
+  {
+   "offset": 80,
+   "more_fragments": true,
+   "fill": "D",
+   "len": 8
+  },
+  {
+   "offset": 104,
+   "more_fragments": true,
+   "fill": "E",
+   "len": 16
+  },
+  {
+   "offset": 120,
+   "more_fragments": true,
+   "fill": "F",
+   "len": 24
+  },
+  {
+   "offset": 144,
+   "more_fragments": true,
+   "fill": "G",
+   "len": 16
+  },
+  {
+   "offset": 160,
+   "more_fragments": true,
+   "fill": "H",
+   "len": 16
+  },
+  {
+   "offset": 176,
+   "more_fragments": true,
+   "fill": "I",
+   "len": 8
+  },
+  {
+   "offset": 8,
+   "more_fragments": true,
+   "fill": "J",
+   "len": 32
+  },
+  {
+   "offset": 48,
+   "more_fragments": true,
+   "fill": "K",
+   "len": 24
+  },
+  {
+   "offset": 72,
+   "more_fragments": true,
+   "fill": "L",
+   "len": 24
+  },
+  {
+   "offset": 96,
+   "more_fragments": true,
+   "fill": "M",
+   "len": 24
+  },
+  {
+   "offset": 128,
+   "more_fragments": true,
+   "fill": "N",
+   "len": 8
+  },
+  {
+   "offset": 152,
+   "more_fragments": true,
+   "fill": "O",
+   "len": 8
+  },
+  {
+   "offset": 160,
+   "more_fragments": true,
+   "fill": "P",
+   "len": 8
+  },
+  {
+   "offset": 176,
+   "more_fragments": false,
+   "fill": "Q",
+   "len": 16
+  }
+ ],
+ "ipv6_fragments": [
+  {
+   "offset": 0,
+   "more_fragments": true,
+   "fill": "A",
+   "len": 24
+  },
+  {
+   "offset": 32,
+   "more_fragments": true,
+   "fill": "B",
+   "len": 16
+  },
+  {
+   "offset": 48,
+   "more_fragments": true,
+   "fill": "C",
+   "len": 24
+  },
+  {
+   "offset": 80,
+   "more_fragments": true,
+   "fill": "D",
+   "len": 8
+  },
+  {
+   "offset": 104,
+   "more_fragments": true,
+   "fill": "E",
+   "len": 16
+  },
+  {
+   "offset": 120,
+   "more_fragments": true,
+   "fill": "F",
+   "len": 24
+  },
+  {
+   "offset": 144,
+   "more_fragments": true,
+   "fill": "G",
+   "len": 16
+  },
+  {
+   "offset": 160,
+   "more_fragments": true,
+   "fill": "H",
+   "len": 16
+  },
+  {
+   "offset": 176,
+   "more_fragments": true,
+   "fill": "I",
+   "len": 8
+  },
+  {
+   "offset": 8,
+   "more_fragments": true,
+   "fill": "J",
+   "len": 32
+  },
+  {
+   "offset": 48,
+   "more_fragments": true,
+   "fill": "K",
+   "len": 24
+  },
+  {
+   "offset": 72,
+   "more_fragments": true,
+   "fill": "L",
+   "len": 24
+  },
+  {
+   "offset": 96,
+   "more_fragments": true,
+   "fill": "M",
+   "len": 24
+  },
+  {
+   "offset": 128,
+   "more_fragments": true,
+   "fill": "N",
+   "len": 8
+  },
+  {
+   "offset": 152,
+   "more_fragments": true,
+   "fill": "O",
+   "len": 8
+  },
+  {
+   "offset": 160,
+   "more_fragments": true,
+   "fill": "P",
+   "len": 8
+  },
+  {
+   "offset": 176,
+   "more_fragments": false,
+   "fill": "Q",
+   "len": 16
+  }
+ ],
+ "expected": {
+  "bsd": {
+   "ipv4": "AAAJJBCCCLLLMMMFFFGGHHIQ",
+   "ipv6": "AAAJJBCCCLLLMMMFFFGGHHIQ"
+  },
+  "linux": {
+   "ipv4": "AAAJJBKKKLLLMMMFFFGGPHQQ",
+   "ipv6": "AAAJJBKKKLLLMMMFFFGGPHQQ"
+  },
+  "windows": {
+   "ipv4": "AAAJBBCCCLLLMEEFFFGGHHIQ",
+   "ipv6": "AAAJBBCCCLLLMEEFFFGGHHIQ"
+  },
+  "solaris": {
+   "ipv4": "AAAJBBCCCLLLMMMFFFGGHHIQ",
+   "ipv6": "AAAJBBCCCLLLMMMFFFGGHHIQ"
+  },
+  "first": {
+   "ipv4": "AAAJBBCCCLDLMEEFFFGGHHIQ",
+   "ipv6": "AAAJBBCCCLDLMEEFFFGGHHIQ"
+  },
+  "last": {
+   "ipv4": "AJJJJBKKKLLLMMMFNFGOPHQQ",
+   "ipv6": "AJJJJBKKKLLLMMMFNFGOPHQQ"
+  }
+ }
+}

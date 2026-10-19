@@ -1009,6 +1009,7 @@ dependencies = [
  "packet-tools-reassembly",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 
@@ -1076,6 +1077,14 @@ dependencies = [
 [[package]]
 name = "packet-tools-reassembly"
 version = "0.1.0"
+dependencies = [
+ "ahash",
+ "packet-tools-capture",
+ "packet-tools-dissect",
+ "packet-tools-flow",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "parquet"

@@ -16,9 +16,11 @@ packet-tools-export = { path = "../packet-tools-export" }
 packet-tools-flow = { path = "../packet-tools-flow" }
 packet-tools-reassembly = { path = "../packet-tools-reassembly" }
 serde_json.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 serde.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 
 [lib]

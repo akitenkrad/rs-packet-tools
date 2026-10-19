@@ -12,6 +12,7 @@ libfuzzer-sys = "=0.4.10"
 packet-tools-capture = { path = "../crates/packet-tools-capture" }
 packet-tools-dissect = { path = "../crates/packet-tools-dissect" }
 packet-tools-flow = { path = "../crates/packet-tools-flow" }
+packet-tools-reassembly = { path = "../crates/packet-tools-reassembly" }
 
 [[bin]]
 name = "dissect"
@@ -30,6 +31,13 @@ bench = false
 [[bin]]
 name = "flow"
 path = "fuzz_targets/flow.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reassembly"
+path = "fuzz_targets/reassembly.rs"
 test = false
 doc = false
 bench = false

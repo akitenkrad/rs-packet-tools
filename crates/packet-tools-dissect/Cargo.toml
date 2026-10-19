@@ -9,3 +9,10 @@ authors.workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+packet-tools-capture = { path = "../packet-tools-capture" }
+
+[dev-dependencies]
+etherparse.workspace = true
+proptest.workspace = true

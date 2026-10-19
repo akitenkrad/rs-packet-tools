@@ -5,10 +5,12 @@ use std::{
     time::Instant,
 };
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use packet_tools_capture::{
     Capture, CaptureFormat, CaptureStats, Compression, Container, Endian, OpenOptions, TsResolution,
 };
+use packet_tools_dissect::{DecodeDepth, decode};
+use packet_tools_export::packets::{Field, Format, PacketsWriter, parse_fields};
 use serde_json::json;
 
 #[derive(Parser)]
@@ -22,6 +24,8 @@ struct Cli {
 enum Command {
     /// Validate capture containers and summarize their records.
     Validate(ValidateArgs),
+    /// Export one row per packet to Parquet or CSV.
+    Packets(PacketsArgs),
 }
 
 #[derive(Args)]
@@ -37,6 +41,40 @@ struct ValidateArgs {
     files: Vec<PathBuf>,
 }
 
+#[derive(Args)]
+struct PacketsArgs {
+    /// Comma-separated output column names.
+    #[arg(long)]
+    fields: Option<String>,
+    /// Output format; inferred from .parquet or .csv when omitted.
+    #[arg(long, value_enum)]
+    format: Option<OutputFormat>,
+    /// Write at most this many packets.
+    #[arg(long)]
+    limit: Option<u64>,
+    /// Deepest layer to decode.
+    #[arg(long, value_enum, default_value = "l4")]
+    depth: Depth,
+    /// Output file.
+    #[arg(short = 'o', long)]
+    output: PathBuf,
+    /// Input capture.
+    input: PathBuf,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum OutputFormat {
+    Parquet,
+    Csv,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Depth {
+    L2,
+    L3,
+    L4,
+}
+
 struct FileReport {
     path: PathBuf,
     format: Option<CaptureFormat>,
@@ -48,6 +86,101 @@ struct FileReport {
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Validate(args) => validate(args),
+        Command::Packets(args) => packets(args),
+    }
+}
+
+fn packets(args: PacketsArgs) -> ExitCode {
+    let format = match output_format(args.format, &args.output) {
+        Ok(format) => format,
+        Err(error) => {
+            eprintln!("packet-tools packets: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let selected;
+    let fields = if let Some(list) = args.fields.as_deref() {
+        match parse_fields(list) {
+            Ok(fields) => {
+                selected = fields;
+                &selected[..]
+            }
+            Err(error) => {
+                eprintln!("packet-tools packets: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        Field::ALL
+    };
+    let mut writer = match PacketsWriter::create(&args.output, format, fields) {
+        Ok(writer) => writer,
+        Err(error) => {
+            eprintln!("packet-tools packets: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut capture = match Capture::open(&args.input) {
+        Ok(capture) => capture,
+        Err(error) => {
+            eprintln!("packet-tools packets: {error}");
+            let _ = writer.finish();
+            return ExitCode::FAILURE;
+        }
+    };
+    let depth = match args.depth {
+        Depth::L2 => DecodeDepth::L2,
+        Depth::L3 => DecodeDepth::L3,
+        Depth::L4 => DecodeDepth::L4,
+    };
+    let mut read_error = None;
+    let mut written = 0u64;
+    while args.limit.is_none_or(|limit| written < limit) {
+        let Some(result) = capture.next_record() else {
+            break;
+        };
+        let record = match result {
+            Ok(record) => record,
+            Err(error) => {
+                read_error = Some(error.to_string());
+                break;
+            }
+        };
+        let packet = decode(record.data, record.linktype, depth);
+        if let Err(error) = writer.push(&record, &packet) {
+            eprintln!("packet-tools packets: {error}");
+            return ExitCode::FAILURE;
+        }
+        written += 1;
+    }
+    if let Err(error) = writer.finish() {
+        eprintln!("packet-tools packets: {error}");
+        return ExitCode::FAILURE;
+    }
+    if let Some(error) = read_error {
+        eprintln!("packet-tools packets: {error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn output_format(explicit: Option<OutputFormat>, output: &Path) -> Result<Format, &'static str> {
+    match explicit {
+        Some(OutputFormat::Parquet) => Ok(Format::Parquet),
+        Some(OutputFormat::Csv) => Ok(Format::Csv),
+        None => match output
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("parquet") => Ok(Format::Parquet),
+            Some("csv") => Ok(Format::Csv),
+            _ => Err(
+                "cannot determine output format; use --format parquet|csv or a .parquet/.csv output extension",
+            ),
+        },
     }
 }
 

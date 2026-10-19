@@ -16,6 +16,24 @@ fn json_reports_all_pcapng_interfaces() {
 }
 
 #[test]
+fn packet_tools_engine_reports_legacy_pcap_metrics() {
+    let output = Command::new(env!("CARGO_BIN_EXE_rsbench"))
+        .args(["--engine", "packet-tools", "--json"])
+        .arg(fixture("be_usec.pcap"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(integer_field(&value, "packets"), 19);
+    assert_eq!(integer_field(&value, "errors"), 0);
+    assert_precise_rate(&value);
+}
+
+#[test]
 fn default_output_keeps_the_human_readable_format() {
     let output = Command::new(env!("CARGO_BIN_EXE_rsbench"))
         .arg(fixture("be_usec.pcap"))

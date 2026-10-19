@@ -13,3 +13,5 @@ ahash.workspace = true
 etherparse.workspace = true
 flate2.workspace = true
 pcap-file.workspace = true
+packet-tools-capture = { path = "../../crates/packet-tools-capture" }
+packet-tools-dissect = { path = "../../crates/packet-tools-dissect" }

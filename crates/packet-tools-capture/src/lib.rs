@@ -201,21 +201,31 @@ impl Capture {
     }
 
     fn next_pcap_meta(&mut self) -> Result<Option<RecordMeta>, CaptureError> {
-        if !self.input.ensure(1)? {
-            return Ok(None);
-        }
         let offset = self.input.offset();
         if !self.input.ensure(16)? {
+            if self.input.available_bytes().is_empty() {
+                return Ok(None);
+            }
             return Err(self.truncated(offset));
         }
         let header = self.input.peek_array::<16>();
         let Parser::Pcap(state) = self.parser else {
             unreachable!();
         };
-        let seconds = read_u32(&header[0..4], state.endian);
-        let fraction = read_u32(&header[4..8], state.endian);
-        let caplen = read_u32(&header[8..12], state.endian);
-        let origlen = read_u32(&header[12..16], state.endian);
+        let [seconds, fraction, caplen, origlen] = match state.endian {
+            Endian::Little => [
+                u32::from_le_bytes([header[0], header[1], header[2], header[3]]),
+                u32::from_le_bytes([header[4], header[5], header[6], header[7]]),
+                u32::from_le_bytes([header[8], header[9], header[10], header[11]]),
+                u32::from_le_bytes([header[12], header[13], header[14], header[15]]),
+            ],
+            Endian::Big => [
+                u32::from_be_bytes([header[0], header[1], header[2], header[3]]),
+                u32::from_be_bytes([header[4], header[5], header[6], header[7]]),
+                u32::from_be_bytes([header[8], header[9], header[10], header[11]]),
+                u32::from_be_bytes([header[12], header[13], header[14], header[15]]),
+            ],
+        };
         if caplen as usize > MAX_RECORD_SIZE {
             return Err(corrupt(offset, "captured length exceeds 64 MiB"));
         }
@@ -224,14 +234,11 @@ impl Capture {
             return Err(self.truncated(offset));
         }
         let scale = match state.ts_resolution {
-            TsResolution::Pow10(6) => 1_000i128,
-            TsResolution::Pow10(9) => 1i128,
+            TsResolution::Pow10(6) => 1_000i64,
+            TsResolution::Pow10(9) => 1i64,
             _ => unreachable!(),
         };
-        let timestamp = i128::from(seconds) * 1_000_000_000 + i128::from(fraction) * scale;
-        let ts_ns = i64::try_from(timestamp).map_err(|_| CaptureError::TimestampOverflow {
-            index: self.next_index,
-        })?;
+        let ts_ns = i64::from(seconds) * 1_000_000_000 + i64::from(fraction) * scale;
         let data_start = self.input.cursor() + 16;
         let data_end = data_start + caplen as usize;
         self.input.advance(total);
@@ -576,36 +583,50 @@ impl Capture {
             self.stats.truncated_packets = self.stats.truncated_packets.saturating_add(1);
         }
         if let Some(timestamp) = record.ts_ns {
-            if self.stats.first_ts_ns.is_none() {
+            if let Some(previous) = self.previous_timestamp {
+                if timestamp < previous {
+                    self.stats.timestamp_regressions =
+                        self.stats.timestamp_regressions.saturating_add(1);
+                    self.stats.max_regression_ns = self
+                        .stats
+                        .max_regression_ns
+                        .max(previous.saturating_sub(timestamp));
+                }
+                self.stats.last_ts_ns = Some(timestamp);
+                if timestamp
+                    < self
+                        .stats
+                        .min_ts_ns
+                        .expect("initialized with previous timestamp")
+                {
+                    self.stats.min_ts_ns = Some(timestamp);
+                }
+                if timestamp
+                    > self
+                        .stats
+                        .max_ts_ns
+                        .expect("initialized with previous timestamp")
+                {
+                    self.stats.max_ts_ns = Some(timestamp);
+                }
+            } else {
                 self.stats.first_ts_ns = Some(timestamp);
-            }
-            if let Some(previous) = self.previous_timestamp
-                && timestamp < previous
-            {
-                self.stats.timestamp_regressions =
-                    self.stats.timestamp_regressions.saturating_add(1);
-                self.stats.max_regression_ns = self
-                    .stats
-                    .max_regression_ns
-                    .max(previous.saturating_sub(timestamp));
+                self.stats.last_ts_ns = Some(timestamp);
+                self.stats.min_ts_ns = Some(timestamp);
+                self.stats.max_ts_ns = Some(timestamp);
             }
             self.previous_timestamp = Some(timestamp);
-            self.stats.last_ts_ns = Some(timestamp);
-            self.stats.min_ts_ns = Some(
-                self.stats
-                    .min_ts_ns
-                    .map_or(timestamp, |value| value.min(timestamp)),
-            );
-            self.stats.max_ts_ns = Some(
-                self.stats
-                    .max_ts_ns
-                    .map_or(timestamp, |value| value.max(timestamp)),
-            );
         } else {
             self.stats.packets_without_timestamp =
                 self.stats.packets_without_timestamp.saturating_add(1);
         }
-        *self.stats.linktypes.entry(record.linktype.0).or_default() += 1;
+        if let Some(mut first) = self.stats.linktypes.first_entry()
+            && *first.key() == record.linktype.0
+        {
+            *first.get_mut() += 1;
+        } else {
+            *self.stats.linktypes.entry(record.linktype.0).or_default() += 1;
+        }
     }
 
     fn pcapng_state(&self) -> &PcapNgState {

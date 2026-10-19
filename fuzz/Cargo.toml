@@ -1,0 +1,29 @@
+[package]
+name = "packet-tools-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+packet-tools-capture = { path = "../crates/packet-tools-capture" }
+packet-tools-dissect = { path = "../crates/packet-tools-dissect" }
+
+[[bin]]
+name = "dissect"
+path = "fuzz_targets/dissect.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "capture"
+path = "fuzz_targets/capture.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

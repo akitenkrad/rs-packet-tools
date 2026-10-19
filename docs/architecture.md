@@ -51,6 +51,7 @@ capture -> dissect -> flow ----------------------> export
 |---|---|---|
 | `packets` | Packet | Index in the file, timestamp, captured and original length, selected L2–L4 fields, `flow_uid` |
 | `flows` | Flow | `flow_uid`, key, start and end time, termination reason, flow features |
+| `streams` | Connection direction | `flow_uid`, endpoints, delivered bytes, gaps, overlaps, close reason and payload hash |
 | `dns`, `http`, `tls`, ... | Application event | `flow_uid`, packet index, protocol-specific fields |
 | `capture_stats` | File | Packet count, format, link types, backward timestamps, malformed packets |
 
@@ -64,7 +65,7 @@ capture -> dissect -> flow ----------------------> export
 | M1 | `packet-tools-capture`: PCAP, pcapng and gzip reading (done) |
 | M2 | `packet-tools-dissect` and the `packets` table (done) |
 | M3 | `packet-tools-flow` and the `flows` table (done) |
-| M4 | `packet-tools-reassembly` |
+| M4 | `packet-tools-reassembly` (done) |
 | M5 | `packet-tools-app` |
 | M6 | Parallel processing and a performance report |
 

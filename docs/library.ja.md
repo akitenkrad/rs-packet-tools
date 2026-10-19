@@ -135,3 +135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `flow_uid` は 64 ビット FNV-1a（初期値 `0xcbf29ce484222325`，素数 `0x100000001b3`）です．ハッシュへ渡すバイト列は，IP 版，プロトコル，VLAN の有無と VLAN ID のビッグエンディアン表現，正規化後の第 1 アドレスとポート，第 2 アドレスとポート，ICMP type の有無と値，ICMP identifier の有無とビッグエンディアン表現，最初の時刻を符号付き 64 ビットのビッグエンディアンで表したナノ秒，の順です．IPv4 アドレスは 4 バイト，IPv6 アドレスは 16 バイトです．packets 表や今後のアプリ層の表から同じ値を計算できるように，この形式を固定します．
 
 スキーマと，方針によって値が変わる特徴量は[フロー列](flows-columns.ja.md)にまとめています．
+
+## 再構成（`packet_tools::reassembly`）
+
+`Defragmenter::push(&PacketRecord, &Packet)` は解析済み packet を受け取り，完成した `ReassembledDatagram` と型付きの `IpEvent` を返します．完成したデータグラムは `decode(bytes, LinkType(101), DecodeDepth::L4)` に渡せる raw IP のバイト列を所有します．IPv4 では全長，fragment field，checksum を直します．IPv6 では Fragment header より前の extension header を保ち，Fragment header を除き，next-header chain と payload length を直します．`DefragConfig` で方針，VLAN key，timeout，断片数，データグラム長，memory の上限を設定できます．断片の payload は開始位置順の重ならない区間として保持するため，大きな offset に孤立した断片があっても，欠けた prefix の領域は確保しません．`Defragmenter::estimated_memory_bytes` は，上限に算入する payload の capacity と区間の管理領域を返します．
+
+`TcpReassembler::push` には通常の解析済み TCP packet と，再び解析した完成データグラムのどちらも渡せます．出力の `TcpItem` は `Start`，`Data`，`Gap`，`PostClose`，`End` です．`StreamChunk` は接続 ID，方向，0 始まりの stream position，`Arc<[u8]>` を持つため，M5 の解析器は chunk を余計に複製せず保持できます．既定は `DeliveryMode::OnAck` で，`Immediate` は連続した prefix をすぐに返します．TCP の payload は開始位置順の重ならない区間として保持し，各区間には重なり方針の判定に使う元 segment 全体の範囲を残します．配送済みの payload は原則として捨てますが，遅れて届いた食い違う重なりを検出するため，各方向で直近 1 MiB まで（かつ `stream_memory` の半分以下）を残します．この履歴と区間の管理領域は両方の memory 上限に算入し，現在値は `TcpReassembler::estimated_memory_bytes` で取得できます．`PostClose` は統計だけの通知です．受理した RST または双方の FIN が完了した後は，`TcpConfig::closing_timeout` の間，接続を墓石として残します．その間の SYN（ACK なし）以外の packet は数えますが，`Data` としては返しません．SYN（ACK なし）は墓石を置き換え，timeout 後の packet は新しい midstream 接続を開始できます．`next_expected - 1` にある 0 または 1 バイトの keepalive は `DirectionSummary::keepalives` に数え，buffer と重なり判定を通しません．capture の終端で `finish()` を呼びます．
+
+`FragmentBuffer` と `TcpSegmentBuffer` は，protocol 適合試験から方針適用後の buffer を直接調べるための API です．`interval_count` と `allocated_bytes` で区間数と heap の推定確保量も調べられます．`packet_tools::flow` の `FlowIdentityKey::normalized` と `flow_uid` を再構成側も共有するので，`IdleOnly` flow と TCP 接続は，同じ最初の packet 時刻から同じ識別子を作ります．

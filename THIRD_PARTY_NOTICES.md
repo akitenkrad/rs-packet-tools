@@ -1,5 +1,10 @@
 # Third-party notices
 
+The reassembly test fixtures extract only inputs and expected values (no source code) from the
+Sturges & Novak overlap tests in OISF/suricata commit `b717c48`: `DefragSturgesNovak*` in
+`src/defrag.c` and `Overlap*` in `src/tests/stream-tcp-list.c`. Suricata is distributed under
+GPL-2.0; its source code is not included or adapted here.
+
 The `cicflowmeter` and `corrected` flow policies reproduce behavior from
 [ahlashkari/CICFlowMeter](https://github.com/ahlashkari/CICFlowMeter) and
 [GintsEngelen/CICFlowMeter](https://github.com/GintsEngelen/CICFlowMeter). Both are distributed

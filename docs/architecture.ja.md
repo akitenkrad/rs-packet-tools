@@ -51,6 +51,7 @@ capture -> dissect -> flow ----------------------> export
 |---|---|---|
 | `packets` | パケット | ファイル内の通し番号，時刻，キャプチャ長と元の長さ，選んだ L2〜L4 の項目，`flow_uid` |
 | `flows` | フロー | `flow_uid`，キー，開始時刻と終了時刻，終了理由，フロー特徴量 |
+| `streams` | 接続の片方向 | `flow_uid`，終端点，渡したバイト数，欠落，重なり，終了理由，ペイロードのハッシュ |
 | `dns`，`http`，`tls` など | アプリ層の事象 | `flow_uid`，パケットの通し番号，プロトコルごとの項目 |
 | `capture_stats` | ファイル | パケット数，形式，リンク種別，時刻の逆行，壊れたパケット |
 
@@ -64,7 +65,7 @@ capture -> dissect -> flow ----------------------> export
 | M1 | `packet-tools-capture`: PCAP，pcapng，gzip の読み込み（完了） |
 | M2 | `packet-tools-dissect` と `packets` 表（完了） |
 | M3 | `packet-tools-flow` と `flows` 表（完了） |
-| M4 | `packet-tools-reassembly` |
+| M4 | `packet-tools-reassembly`（完了） |
 | M5 | `packet-tools-app` |
 | M6 | 並列処理と性能の報告 |
 

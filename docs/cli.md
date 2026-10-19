@@ -9,6 +9,7 @@ Commands:
   validate  Validate capture containers and summarize their records
   packets   Export one row per packet to Parquet or CSV
   flows     Build bidirectional flows and export one row per completed flow
+  streams   Reassemble IP fragments and directional TCP byte streams
   help      Print this message or the help of the given subcommand(s)
 ```
 
@@ -166,3 +167,45 @@ corrected-policy columns before packet-tools metadata. See [Flow columns](flows-
 
 Format inference and read-error handling match `packets`: `.parquet` and `.csv` select the format,
 and complete flows available before a capture error are written before exit status 1 is returned.
+
+## `streams`
+
+Reassembles IPv4/IPv6 fragments, decodes completed raw-IP datagrams, and reconstructs each TCP direction.
+
+```text
+Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUT>
+
+Options:
+      --ip-policy <IP_POLICY>          [default: bsd]
+      --tcp-policy <TCP_POLICY>        [default: bsd]
+      --delivery <DELIVERY>            [default: on-ack] [possible values: on-ack, immediate]
+      --defrag-timeout <SECONDS>       [default: 60]
+      --tcp-timeout <SECONDS>          [default: 3600]
+      --stream-memory <BYTES>          [default: 4194304]
+      --memory <BYTES>                 [default: 1073741824]
+      --vlan-in-key
+      --events <FILE>
+      --datagrams <FILE>
+      --dump-dir <DIRECTORY>
+      --format <FORMAT>                [possible values: parquet, csv]
+  -o, --output <OUTPUT>
+```
+
+```sh
+packet-tools streams --tcp-policy linux --events overlap.csv --datagrams datagrams.csv \
+    --dump-dir streams -o streams.parquet capture.pcapng
+```
+
+IP policies are `first`, `last`, `bsd`, `linux`, `windows`, and `solaris`. `first` always retains existing bytes and `last` always uses new bytes. `bsd` uses a new fragment when it starts before the existing fragment. `linux` also uses it when both start at the same offset. `windows` requires the new fragment to start before and end after the existing fragment; `solaris` accepts an equal end.
+
+TCP policies are `first`, `last`, `bsd`, `linux`, `old-linux`, and `solaris`. Aliases are `vista` for `first`; `windows`, `macos`, `hpux10`, and `irix` for `bsd`; and `hpux11` for `solaris`. Existing bytes are retained by default. A new segment starting before an existing segment wins for `bsd`, `linux`, and `old-linux`; `solaris` also requires it to reach the existing end. At the same start, `linux` replaces only when the new segment extends farther, while `old-linux` and `solaris` also replace equal-length data. Starting inside an existing segment replaces data only under `solaris`, and only when the new segment extends past the existing end. `last` always replaces existing data.
+
+`on-ack` delays delivery until the peer acknowledges the bytes, allowing overlaps received first to be resolved by policy. `immediate` delivers a contiguous prefix as soon as it arrives. Bytes already delivered never change; a later conflicting overlap becomes `tcp_late_overlap_conflict`. A zero- or one-byte segment at exactly one sequence number before the next expected byte, without SYN, FIN or RST, is counted as a keepalive and is neither buffered nor reported as an overlap. FIN completion, accepted RST, timeout, and capture end flush remaining ranges, emitting gaps where bytes are absent.
+
+Fragment and TCP payloads are held as disjoint ranges. `--stream-memory` and `--memory` charge payload capacity and range metadata rather than sequence-space holes. Up to the most recent 1 MiB of delivered payload per direction, capped at half of `--stream-memory`, is retained for late-overlap conflict detection and is included in the limits. Reaching a TCP limit advances through the oldest outstanding range, emits a gap where necessary, and records `tcp_memory_limit`.
+
+After an accepted RST or a completed two-sided FIN close, the closed connection remains associated with its key for the 60-second closing timeout. Non-SYN packets in that interval are not delivered; packets and payload bytes are counted in `post_close_packets` and `post_close_bytes`, and each packet with payload emits `tcp_data_after_close`. A SYN without ACK starts a new connection immediately. After the closing timeout, any packet may start a new midstream connection.
+
+The stream table has one row per connection and direction: `stream_id`, `flow_uid`, `direction`, client/server addresses and ports, `first_ts_ns`, `last_ts_ns`, `midstream`, `bytes`, `segments`, `gaps`, `gap_bytes`, `overlaps`, `overlap_conflicts`, `retransmitted_bytes`, `post_close_packets`, `post_close_bytes`, `keepalives`, `close_reason`, and `sha256`. The hash concatenates delivered data while omitting gaps. `--dump-dir` writes the same bytes to `<stream_id>.c2s.bin` and `<stream_id>.s2c.bin`.
+
+The event table records `ip_overlap`, `ip_overlap_conflict`, `ip_timeout`, `ip_too_large`, `ip_too_many_fragments`, `ip_memory_limit`, `tcp_overlap_conflict`, `tcp_late_overlap_conflict`, `tcp_data_after_close`, `tcp_memory_limit`, and `tcp_rst_ignored`, together with the applicable key, range and retained side. The datagram table records the completed packet index, IP version, addresses, identification, protocol, fragment count, reassembled length, and payload SHA-256.

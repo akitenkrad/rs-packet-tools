@@ -52,3 +52,47 @@ Records are returned in file order and never reordered. `CaptureStats` counts ti
 ### Errors
 
 Errors are returned once, after which `next_record` returns `None`. A file that ends in the middle of a record yields `CaptureError::TruncatedRecord` after all complete records; `stats().truncated_tail` is then `true`. Malformed pcapng blocks yield `CaptureError::Corrupt` with the byte offset and a reason. Captured lengths above 64 MiB are rejected as corrupt rather than allocated.
+
+## Decoding L2–L4 (`packet_tools::dissect`)
+
+```rust
+use packet_tools::capture::Capture;
+use packet_tools::dissect::{decode, DecodeDepth, Ipv4View, TcpView, UdpView};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args().nth(1).expect("usage: docex <capture>");
+    let mut capture = Capture::open(&path)?;
+    while let Some(record) = capture.next_record() {
+        let record = record?;
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        let Some(ip) = packet.layer::<Ipv4View>() else { continue };
+        if let Some(tcp) = packet.layer::<TcpView>() {
+            println!("{} {}:{} -> {}:{} flags={:#05x} payload={}B",
+                record.index, ip.src(), tcp.src_port(), ip.dst(), tcp.dst_port(),
+                tcp.flags(), packet.payload().len());
+        } else if let Some(udp) = packet.layer::<UdpView>() {
+            println!("{} {}:{} -> {}:{} udp", record.index, ip.src(), udp.src_port(), ip.dst(), udp.dst_port());
+        }
+        if let Some(m) = packet.malformed() {
+            eprintln!("packet {}: {:?}", record.index, m);
+        }
+    }
+    Ok(())
+}
+```
+
+`decode(data, linktype, depth)` finds the offsets of the layers up to `depth` (`L2`, `L3` or `L4`) and returns a small `Packet` value without allocating. Header fields are read from the original bytes only when a view's accessor is called.
+
+| Method | Returns |
+|---|---|
+| `layer::<T>()` | The first layer of view type `T`, or `None` |
+| `layers_of::<T>()` | Every layer of type `T` (for example stacked VLAN tags) |
+| `layers()` | The `LayerKind` of each decoded layer, outermost first |
+| `payload()` | The bytes after the deepest decoded layer, without padding |
+| `trailer()` | The bytes after the end of the IP datagram, such as Ethernet padding |
+| `malformed()` | Where decoding stopped on a broken header (`layer`, `offset`, `kind`) |
+| `ip_truncated()` | Whether the IP length exceeds the captured bytes |
+
+Link types: Ethernet (1), raw IP (101, 12, 14), Linux cooked capture v1 and v2 (113, 276), BSD loopback (0, 108). Views: `EthernetView`, `VlanView`, `LinuxSllView`, `LinuxSll2View`, `NullView`, `ArpView`, `Ipv4View`, `Ipv6View`, `Icmpv4View`, `Icmpv6View`, `TcpView`, `UdpView`. IPv6 extension headers are followed to find the upper-layer protocol (`Ipv6View::upper_protocol`). Checksums are not verified during decoding; call `verify_checksum` on `Ipv4View`, `TcpView` or `UdpView` when you need it.
+
+Lengths and fragments follow the rules of the `packets` table described in the [CLI](cli.md#packets) document.

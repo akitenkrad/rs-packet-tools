@@ -58,4 +58,13 @@ Results on an Apple Silicon Mac, with the samples in the page cache:
 | DARPA 1999, first 100 MB (classic PCAP, 213 bytes per packet on average) | 1.76 M pkt/s | 10,895 pkt/s | 19.1 M pkt/s |
 | CIC-IDS-2017 Wednesday, first 300 MB (pcapng, about 1.3 KB per packet) | 0.63 M pkt/s | 13,385 pkt/s | 5.68 M pkt/s |
 
+`rsbench` also runs the same task on packet-tools (`packet_tools::capture` and `packet_tools::dissect`) with `--engine packet-tools`; the default is `--engine etherparse`. Medians of 9 runs per engine, with the order of the two engines alternated and the samples in the page cache:
+
+| Sample | `--engine etherparse` | `--engine packet-tools` |
+|---|---:|---:|
+| DARPA 1999, first 100 MB | 22.0 M pkt/s | 23.4 M pkt/s |
+| CIC-IDS-2017 Wednesday, first 300 MB | 7.81 M pkt/s | 8.94 M pkt/s |
+
+Each run takes only a few tens of milliseconds, so measure on an otherwise idle machine and compare medians.
+
 When a whole CIC-IDS-2017 day is read from an external disk instead, the Rust baseline is limited by the disk (about 110 MB/s in our setup), not by the CPU.

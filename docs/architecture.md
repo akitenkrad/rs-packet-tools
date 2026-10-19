@@ -62,7 +62,7 @@ capture -> dissect -> flow ----------------------> export
 |---|---|
 | M0 | Workspace, synthetic fixtures, CI, benchmarks (done) |
 | M1 | `packet-tools-capture`: PCAP, pcapng and gzip reading (done) |
-| M2 | `packet-tools-dissect` and the `packets` table |
+| M2 | `packet-tools-dissect` and the `packets` table (done) |
 | M3 | `packet-tools-flow` and the `flows` table |
 | M4 | `packet-tools-reassembly` |
 | M5 | `packet-tools-app` |

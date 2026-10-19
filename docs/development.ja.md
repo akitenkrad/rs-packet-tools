@@ -72,4 +72,13 @@ Apple Silicon の Mac で，切り出したファイルがページキャッシ�
 | DARPA 1999 の先頭 100 MB（旧形式 PCAP，平均 213 バイト/パケット） | 176 万 pkt/s | 10,895 pkt/s | 1,910 万 pkt/s |
 | CIC-IDS-2017 水曜の先頭 300 MB（pcapng，約 1.3 KB/パケット） | 63 万 pkt/s | 13,385 pkt/s | 568 万 pkt/s |
 
+`rsbench` に `--engine packet-tools` を付けると，同じ処理を packet-tools（`packet_tools::capture` と `packet_tools::dissect`）で行います．既定は `--engine etherparse` です．2 つの engine の順番を入れ替えながら各 9 回測った中央値です（切り出したファイルはページキャッシュ上）．
+
+| 切り出したデータ | `--engine etherparse` | `--engine packet-tools` |
+|---|---:|---:|
+| DARPA 1999 の先頭 100 MB | 2,200 万 pkt/s | 2,340 万 pkt/s |
+| CIC-IDS-2017 水曜の先頭 300 MB | 781 万 pkt/s | 894 万 pkt/s |
+
+1 回の実行は数十ミリ秒と短いので，ほかに負荷の無い状態で測り，中央値で比べてください．
+
 CIC-IDS-2017 の 1 日分をまるごと外付けディスクから読む場合は，Rust の比較対象は CPU ではなくディスクの速度（私たちの環境では約 110 MB/s）で頭打ちになります．

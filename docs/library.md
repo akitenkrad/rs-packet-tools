@@ -96,3 +96,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Link types: Ethernet (1), raw IP (101, 12, 14), Linux cooked capture v1 and v2 (113, 276), BSD loopback (0, 108). Views: `EthernetView`, `VlanView`, `LinuxSllView`, `LinuxSll2View`, `NullView`, `ArpView`, `Ipv4View`, `Ipv6View`, `Icmpv4View`, `Icmpv6View`, `TcpView`, `UdpView`. IPv6 extension headers are followed to find the upper-layer protocol (`Ipv6View::upper_protocol`). Checksums are not verified during decoding; call `verify_checksum` on `Ipv4View`, `TcpView` or `UdpView` when you need it.
 
 Lengths and fragments follow the rules of the `packets` table described in the [CLI](cli.md#packets) document.
+
+## Building flows (`packet_tools::flow`)
+
+`FlowTable` consumes decoded packets in capture order and returns flows as soon as the selected
+policy closes them. Call `finish()` once to emit the states left at end of capture.
+
+```rust
+use packet_tools::capture::Capture;
+use packet_tools::dissect::{decode, DecodeDepth};
+use packet_tools::flow::{FlowConfig, FlowTable, Policy};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut capture = Capture::open("capture.pcap")?;
+    let mut table = FlowTable::new(FlowConfig {
+        policy: Policy::Corrected,
+        ..FlowConfig::default()
+    });
+    while let Some(record) = capture.next_record() {
+        let record = record?;
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        for flow in table.push(&record, &packet) {
+            println!("{} {}", flow.flow_uid, flow.end_reason.as_str());
+        }
+    }
+    for flow in table.finish() {
+        println!("{} {}", flow.flow_uid, flow.end_reason.as_str());
+    }
+    Ok(())
+}
+```
+
+The default configuration is `Corrected`, the `CicFlowMeter` preset, a 120-second flow timeout,
+a 5-second activity timeout and a 60-second IdleOnly timeout. `CicFlowMeter` reproduces the
+ahlashkari implementation, including its known feature bugs and first-FIN termination.
+`Corrected` reproduces the Engelen fork, including its two-FIN/final-ACK state machine and
+single-packet flows. Both compatibility policies truncate timestamps to microseconds and retain
+capture order. `IdleOnly` uses a normalized key, nanosecond timestamps and expiration relative to
+the greatest timestamp seen so far; `vlan_in_key` optionally adds the outer VLAN ID. ICMP echo keys
+include type and identifier.
+
+`EndReason` values are `fin`, `rst`, `flow_timeout`, `idle_timeout`, `end_of_capture` and
+`icmp_type_code_change`. A policy emits only reasons that its state machine can reach.
+
+### Stable flow identifier
+
+`flow_uid` is 64-bit FNV-1a (offset `0xcbf29ce484222325`, prime `0x100000001b3`). The byte stream is:
+IP version; protocol; VLAN-present byte and optional big-endian VLAN; normalized first address and
+big-endian port; normalized second address and port; ICMP-type-present byte and optional type;
+ICMP-identifier-present byte and optional big-endian identifier; then the first timestamp as signed
+big-endian nanoseconds. IPv4 addresses contribute 4 bytes and IPv6 addresses 16 bytes. This format
+is fixed so packets and future application tables can calculate the same identifier.
+
+The complete schemas and policy-sensitive features are listed in [Flow columns](flows-columns.md).

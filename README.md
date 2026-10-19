@@ -6,7 +6,7 @@
 
 `packet-tools` is a Rust library and CLI for fast offline analysis of PCAP and pcapng captures. It is meant as a fast alternative to Scapy for research workloads such as intrusion-detection datasets: it extracts per-packet fields, builds bidirectional flows with configurable termination rules and flow features, reassembles IP fragments and TCP streams, parses application-layer protocols (DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, Telnet), and writes the results to Parquet or CSV.
 
-> **Status: early development (M2).** Reading captures (`packet-tools validate`) and decoding L2–L4 into a per-packet table (`packet-tools packets`) work. Flows, reassembly and application parsing are being implemented milestone by milestone. See [Architecture](docs/architecture.md) for the plan.
+> **Status: early development (M3).** Capture reading, L2–L4 packet export, bidirectional flow tables and CICFlowMeter-compatible flow features are implemented. Reassembly and application parsing remain later milestones. See [Architecture](docs/architecture.md) for the plan.
 
 ## Install
 
@@ -23,9 +23,10 @@ cargo run -p packet-tools -- --version
 
 - [CLI](docs/cli.md): the `packet-tools` command
 - [Library](docs/library.md): reading and decoding captures from Rust
+- [Flow columns](docs/flows-columns.md): flow schemas and CICFlowMeter name mapping
 - [Architecture](docs/architecture.md): crate layout, design principles and milestones
 - [Development](docs/development.md): tests, synthetic fixtures, CI and benchmarks
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option. CICFlowMeter-derived behavior is covered by the [third-party notices](THIRD_PARTY_NOTICES.md).

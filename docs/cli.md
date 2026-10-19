@@ -8,6 +8,7 @@ Usage: packet-tools <COMMAND>
 Commands:
   validate  Validate capture containers and summarize their records
   packets   Export one row per packet to Parquet or CSV
+  flows     Build bidirectional flows and export one row per completed flow
   help      Print this message or the help of the given subcommand(s)
 ```
 
@@ -114,3 +115,54 @@ How lengths and fragments are handled:
 - Headers quoted inside ICMP error messages and tunnelled packets are not decoded.
 
 The exit status is 1 if the capture cannot be read to the end. Rows read before the error are still written, and the output file is closed properly.
+
+## `flows`
+
+Builds bidirectional flows in capture order and writes CSV or Snappy-compressed Parquet.
+
+```text
+Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUT>
+
+Arguments:
+  <INPUT>  Input capture
+
+Options:
+      --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --preset <PRESET>                      [default: cicflowmeter] [possible values: cicflowmeter, minimal]
+      --flow-timeout <FLOW_TIMEOUT>          [default: 120]
+      --activity-timeout <ACTIVITY_TIMEOUT>  [default: 5]
+      --idle-timeout <IDLE_TIMEOUT>          [default: 60]
+      --vlan-in-key
+      --column-names <COLUMN_NAMES>          [default: snake] [possible values: snake, original]
+      --format <FORMAT>                      [possible values: parquet, csv]
+  -o, --output <OUTPUT>                      Output file
+```
+
+```sh
+packet-tools flows --policy corrected -o flows.parquet capture.pcapng
+packet-tools flows --policy cicflowmeter --column-names original -o official-shape.csv capture.pcap
+packet-tools flows --policy idle-only --preset minimal --idle-timeout 30 --vlan-in-key \
+    -o minimal.csv capture.pcap
+```
+
+`corrected` reproduces GintsEngelen/CICFlowMeter at commit `13a0615` and is the default.
+`cicflowmeter` reproduces ahlashkari/CICFlowMeter at commit `9d91f72`, the last version before the
+Engelen fork, including its known feature bugs and first-FIN termination. The official CIC-IDS-2017
+flow CSVs were produced by an earlier release (CICFlowMeter-V3), so several of their columns differ
+from this policy. Their flow timeout defaults to 120 seconds. The 5-second activity timeout
+affects Active/Idle features only; it does not close flows. `idle-only` is packet-tools' normalized
+5-tuple policy. It closes a flow after 60 seconds without a packet, uses nanosecond timestamps and
+optionally includes the outermost VLAN ID in the key.
+
+Snake-case schemas begin with `flow_uid,end_reason`. End reasons are `fin`, `rst`, `flow_timeout`,
+`idle_timeout`, `end_of_capture` and `icmp_type_code_change`. `--column-names original` requires the
+`cicflowmeter` preset, omits `flow_uid`, `end_reason` and `Label`, and preserves the selected Java
+implementation's order and timestamp text: `dd/MM/yyyy hh:mm:ss a` for `cicflowmeter`, and
+`yyyy-MM-dd HH:mm:ss[.SSSSSS]` in UTC for `corrected`. The original schemas contain no duplicate
+headers; snake_case names are unique as well.
+
+The minimal preset has 21 columns. The compatibility preset has 83 original-policy columns or 88
+corrected-policy columns before packet-tools metadata. See [Flow columns](flows-columns.md).
+
+Format inference and read-error handling match `packets`: `.parquet` and `.csv` select the format,
+and complete flows available before a capture error are written before exit status 1 is returned.

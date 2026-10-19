@@ -8,6 +8,7 @@ Usage: packet-tools <COMMAND>
 Commands:
   validate  Validate capture containers and summarize their records
   packets   Export one row per packet to Parquet or CSV
+  flows     Build bidirectional flows and export one row per completed flow
   help      Print this message or the help of the given subcommand(s)
 ```
 
@@ -114,3 +115,40 @@ Parquet は Snappy で圧縮します．CSV では，値が無いところは空
 - ICMP のエラーメッセージの中に引用されたヘッダや，トンネルの中のパケットは解析しません．
 
 キャプチャを最後まで読めなかった場合は終了コード 1 です．エラーまでに読んだ行は書き出し，出力ファイルも正しく閉じます．
+
+## `flows`
+
+キャプチャの順に双方向フローを組み立て，CSV または Snappy 圧縮の Parquet に書き出します．
+
+```text
+Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUT>
+
+Arguments:
+  <INPUT>  Input capture
+
+Options:
+      --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --preset <PRESET>                      [default: cicflowmeter] [possible values: cicflowmeter, minimal]
+      --flow-timeout <FLOW_TIMEOUT>          [default: 120]
+      --activity-timeout <ACTIVITY_TIMEOUT>  [default: 5]
+      --idle-timeout <IDLE_TIMEOUT>          [default: 60]
+      --vlan-in-key
+      --column-names <COLUMN_NAMES>          [default: snake] [possible values: snake, original]
+      --format <FORMAT>                      [possible values: parquet, csv]
+  -o, --output <OUTPUT>                      出力ファイル
+```
+
+```sh
+packet-tools flows --policy corrected -o flows.parquet capture.pcapng
+packet-tools flows --policy cicflowmeter --column-names original -o official-shape.csv capture.pcap
+packet-tools flows --policy idle-only --preset minimal --idle-timeout 30 --vlan-in-key \
+    -o minimal.csv capture.pcap
+```
+
+`corrected` は GintsEngelen/CICFlowMeter のコミット `13a0615` の動作を再現する既定の方針です．`cicflowmeter` は，Engelen らが fork する前の最後の版である ahlashkari/CICFlowMeter のコミット `9d91f72` を，既知の特徴量の誤りや最初の FIN で閉じる処理も含めて再現します．CIC-IDS-2017 の公式のフロー CSV はそれより前のリリース（CICFlowMeter-V3）で作られたので，いくつかの列はこの方針と値が違います．全体タイムアウトの既定値は 120 秒です．活動タイムアウトの 5 秒は Active／Idle 特徴量だけに使い，フローを閉じません．`idle-only` は packet-tools 独自の正規化した 5 タプル方針です．既定では最後のパケットから 60 秒で閉じ，ナノ秒時刻を使います．`--vlan-in-key` を指定すると最も外側の VLAN ID もキーに入れます．
+
+snake_case のスキーマは `flow_uid,end_reason` から始まります．終了理由は `fin`，`rst`，`flow_timeout`，`idle_timeout`，`end_of_capture`，`icmp_type_code_change` です．`--column-names original` は `cicflowmeter` プリセットでだけ使えます．この場合は `flow_uid`，`end_reason`，`Label` を出さず，選んだ Java 実装と同じ順と UTC の時刻表記を使います．`cicflowmeter` は `dd/MM/yyyy hh:mm:ss a`，`corrected` は `yyyy-MM-dd HH:mm:ss[.SSSSSS]` です．元のスキーマにも snake_case 側にも，重複した列名はありません．
+
+minimal プリセットは 21 列です．互換プリセットは packet-tools の 2 列を加える前に，原典方針で 83 列，補正版方針で 88 列です．詳しくは[フロー列](flows-columns.ja.md)を参照してください．
+
+形式の推定と読み込みエラーの扱いは `packets` と同じです．`.parquet` と `.csv` から形式を決め，キャプチャのエラーより前に完成したフローを書き出してから終了コード 1 を返します．

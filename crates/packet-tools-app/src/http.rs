@@ -266,14 +266,9 @@ impl AppParser for HttpParser {
     fn allocated_bytes(&self) -> usize {
         let requests = self
             .requests
-            .capacity()
+            .len()
             .saturating_mul(std::mem::size_of::<(u64, String)>())
-            .saturating_add(
-                self.requests
-                    .iter()
-                    .map(|(_, method)| method.capacity())
-                    .sum(),
-            );
+            .saturating_add(self.requests.iter().map(|(_, method)| method.len()).sum());
         self.buffers
             .iter()
             .map(Buffer::allocated_bytes)
@@ -425,7 +420,7 @@ fn parsed_allocated_bytes(parsed: &Parsed) -> usize {
     ]
     .into_iter()
     .flatten()
-    .map(String::capacity)
+    .map(String::len)
     .sum()
 }
 

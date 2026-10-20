@@ -489,6 +489,10 @@ struct FlowState {
 }
 
 impl FlowState {
+    fn flow_uid(&self) -> u64 {
+        flow_uid_for_directional(&self.initial_key.normalized(), self.first_raw_ts_ns)
+    }
+
     fn new(
         packet: &PacketInfo,
         initial_key: DirectionalKey,
@@ -707,8 +711,7 @@ impl FlowState {
     }
 
     fn complete(self, end_reason: EndReason) -> Flow {
-        let flow_uid =
-            flow_uid_for_directional(&self.initial_key.normalized(), self.first_raw_ts_ns);
+        let flow_uid = self.flow_uid();
         let compatibility_values = self.build_compatibility_values();
         Flow {
             flow_uid,
@@ -862,6 +865,15 @@ impl FlowState {
     }
 }
 
+/// Result of adding one packet to a [`FlowTable`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct PushResult {
+    /// Identifier of the flow which accepted this packet, or `None` when it was discarded.
+    pub flow_uid: Option<u64>,
+    /// Flows closed as a consequence of adding this packet.
+    pub closed: Vec<Flow>,
+}
+
 fn append_packet_stats(values: &mut Vec<FeatureValue>, stats: &SummaryStats) {
     if stats.n == 0 {
         values.extend((0..4).map(|_| FeatureValue::UInt64(0)));
@@ -930,22 +942,43 @@ impl FlowTable {
 
     /// Adds one decoded packet and returns any flows closed by that packet.
     pub fn push(&mut self, record: &PacketRecord<'_>, packet: &Packet<'_>) -> Vec<Flow> {
+        self.push_with_uid(record, packet).closed
+    }
+
+    /// Adds one decoded packet and also returns the identifier of the flow which accepted it.
+    pub fn push_with_uid(&mut self, record: &PacketRecord<'_>, packet: &Packet<'_>) -> PushResult {
         let Some(info) = packet_info(record, packet, &self.config) else {
             self.discarded_packets += 1;
-            return Vec::new();
+            return PushResult {
+                flow_uid: None,
+                closed: Vec::new(),
+            };
         };
         self.accepted_packets += 1;
+        let lookup_key = if self.config.policy == Policy::IdleOnly {
+            info.key.normalized()
+        } else {
+            info.key.clone()
+        };
         let closed = match self.config.policy {
             Policy::IdleOnly => self.push_idle(info),
             Policy::CicFlowMeter | Policy::Corrected => self.push_compat(info),
         };
         self.max_active_len = self.max_active_len.max(self.flows.len());
-        closed
+        let reverse = lookup_key.reverse();
+        let flow_uid = self
+            .flows
+            .get(&lookup_key)
+            .or_else(|| self.flows.get(&reverse))
+            .map(FlowState::flow_uid)
+            .or_else(|| closed.last().map(|flow| flow.flow_uid));
+        PushResult { flow_uid, closed }
     }
 
     /// Emits all flows remaining at end of capture.
     pub fn finish(mut self) -> Vec<Flow> {
-        self.flows
+        let mut flows = self
+            .flows
             .drain()
             .filter_map(|(_, state)| {
                 if self.config.policy == Policy::CicFlowMeter && state.packet_count() <= 1 {
@@ -958,7 +991,9 @@ impl FlowTable {
                 };
                 Some(state.complete(reason))
             })
-            .collect()
+            .collect::<Vec<_>>();
+        flows.sort_by_key(|flow| (flow.first_index, flow.last_index, flow.flow_uid));
+        flows
     }
 
     /// Number of currently resident flows.

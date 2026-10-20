@@ -7,3 +7,5 @@ __pycache__/
 fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
+results/
+bench/ptbench/target/

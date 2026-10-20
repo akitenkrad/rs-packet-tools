@@ -1,8 +1,13 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::ExitCode,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+    thread,
     time::{Duration, Instant},
 };
 
@@ -51,7 +56,7 @@ enum Command {
     App(AppArgs),
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct ValidateArgs {
     /// Emit one JSON object per line.
     #[arg(long)]
@@ -59,12 +64,15 @@ struct ValidateArgs {
     /// Memory-map uncompressed regular files instead of reading them through a buffer.
     #[arg(long)]
     mmap: bool,
+    /// Number of capture files to process concurrently.
+    #[arg(long, default_value = "1", value_parser = parse_jobs)]
+    jobs: usize,
     /// Capture files to validate.
     #[arg(required = true)]
     files: Vec<PathBuf>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct PacketsArgs {
     /// Comma-separated output column names.
     #[arg(long)]
@@ -78,14 +86,32 @@ struct PacketsArgs {
     /// Deepest layer to decode.
     #[arg(long, value_enum, default_value = "l4")]
     depth: Depth,
-    /// Output file.
+    /// Flow grouping and termination policy used by flow_uid.
+    #[arg(long, value_enum, default_value = "corrected")]
+    policy: FlowPolicy,
+    /// Maximum flow age in seconds for compatibility policies.
+    #[arg(long, default_value = "120", value_parser = parse_seconds)]
+    flow_timeout: f64,
+    /// IdleOnly expiration in seconds.
+    #[arg(long, default_value = "60", value_parser = parse_seconds)]
+    idle_timeout: f64,
+    /// Include the outermost VLAN identifier in IdleOnly flow keys.
+    #[arg(long)]
+    vlan_in_key: bool,
+    /// Number of capture files to process concurrently.
+    #[arg(long, default_value = "1", value_parser = parse_jobs)]
+    jobs: usize,
+    /// Output file, or output directory for multiple inputs.
     #[arg(short = 'o', long)]
     output: PathBuf,
-    /// Input capture.
-    input: PathBuf,
+    /// Input captures.
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    #[arg(skip)]
+    packet_counter: Option<Arc<AtomicU64>>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct FlowsArgs {
     /// Flow grouping and termination policy.
     #[arg(long, value_enum, default_value = "corrected")]
@@ -111,14 +137,20 @@ struct FlowsArgs {
     /// Output format; inferred from .parquet or .csv when omitted.
     #[arg(long, value_enum)]
     format: Option<OutputFormat>,
-    /// Output file.
+    /// Number of capture files to process concurrently.
+    #[arg(long, default_value = "1", value_parser = parse_jobs)]
+    jobs: usize,
+    /// Output file, or output directory for multiple inputs.
     #[arg(short = 'o', long)]
     output: PathBuf,
-    /// Input capture.
-    input: PathBuf,
+    /// Input captures.
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    #[arg(skip)]
+    packet_counter: Option<Arc<AtomicU64>>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct StreamsArgs {
     #[arg(long, default_value = "bsd")]
     ip_policy: String,
@@ -144,12 +176,17 @@ struct StreamsArgs {
     dump_dir: Option<PathBuf>,
     #[arg(long, value_enum)]
     format: Option<OutputFormat>,
+    #[arg(long, default_value = "1", value_parser = parse_jobs)]
+    jobs: usize,
     #[arg(short = 'o', long)]
     output: PathBuf,
-    input: PathBuf,
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    #[arg(skip)]
+    packet_counter: Option<Arc<AtomicU64>>,
 }
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 struct AppArgs {
     #[arg(long, default_value = "bsd")]
     ip_policy: String,
@@ -167,9 +204,14 @@ struct AppArgs {
     protocols: String,
     #[arg(long, value_enum, default_value = "parquet")]
     format: OutputFormat,
+    #[arg(long, default_value = "1", value_parser = parse_jobs)]
+    jobs: usize,
     #[arg(short = 'o', long)]
     output: PathBuf,
-    input: PathBuf,
+    #[arg(required = true)]
+    inputs: Vec<PathBuf>,
+    #[arg(skip)]
+    packet_counter: Option<Arc<AtomicU64>>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -229,6 +271,13 @@ fn main() -> ExitCode {
 }
 
 fn app_command(args: AppArgs) -> ExitCode {
+    if args.inputs.len() > 1 {
+        return app_multi(args);
+    }
+    app_single(args)
+}
+
+fn app_single(args: AppArgs) -> ExitCode {
     let ip_policy: IpPolicy = match args.ip_policy.parse() {
         Ok(value) => value,
         Err(error) => {
@@ -258,7 +307,7 @@ fn app_command(args: AppArgs) -> ExitCode {
         StreamDelivery::OnAck => DeliveryMode::OnAck,
         StreamDelivery::Immediate => DeliveryMode::Immediate,
     };
-    let mut capture = match Capture::open(&args.input) {
+    let mut capture = match Capture::open(&args.inputs[0]) {
         Ok(value) => value,
         Err(error) => {
             eprintln!("packet-tools app: {error}");
@@ -300,6 +349,9 @@ fn app_command(args: AppArgs) -> ExitCode {
                 break;
             }
         };
+        if let Some(counter) = &args.packet_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
         let packet = decode(record.data, record.linktype, DecodeDepth::L4);
         let fragmented = packet
             .layer::<Ipv4View>()
@@ -513,6 +565,13 @@ struct StreamAggregate {
 }
 
 fn streams(args: StreamsArgs) -> ExitCode {
+    if args.inputs.len() > 1 {
+        return streams_multi(args);
+    }
+    streams_single(args)
+}
+
+fn streams_single(args: StreamsArgs) -> ExitCode {
     let format = match output_format(args.format, &args.output) {
         Ok(format) => format,
         Err(error) => {
@@ -538,7 +597,7 @@ fn streams(args: StreamsArgs) -> ExitCode {
         StreamDelivery::OnAck => DeliveryMode::OnAck,
         StreamDelivery::Immediate => DeliveryMode::Immediate,
     };
-    let mut capture = match Capture::open(&args.input) {
+    let mut capture = match Capture::open(&args.inputs[0]) {
         Ok(capture) => capture,
         Err(error) => {
             eprintln!("packet-tools streams: {error}");
@@ -573,6 +632,9 @@ fn streams(args: StreamsArgs) -> ExitCode {
                 break;
             }
         };
+        if let Some(counter) = &args.packet_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
         let packet = decode(record.data, record.linktype, DecodeDepth::L4);
         let fragmented = packet
             .layer::<packet_tools_dissect::Ipv4View>()
@@ -819,6 +881,13 @@ fn dump_streams(
 }
 
 fn flows(args: FlowsArgs) -> ExitCode {
+    if args.inputs.len() > 1 {
+        return flows_multi(args);
+    }
+    flows_single(args)
+}
+
+fn flows_single(args: FlowsArgs) -> ExitCode {
     let format = match output_format(args.format, &args.output) {
         Ok(format) => format,
         Err(error) => {
@@ -846,7 +915,7 @@ fn flows(args: FlowsArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut capture = match Capture::open(&args.input) {
+    let mut capture = match Capture::open(&args.inputs[0]) {
         Ok(capture) => capture,
         Err(error) => {
             eprintln!("packet-tools flows: {error}");
@@ -871,6 +940,9 @@ fn flows(args: FlowsArgs) -> ExitCode {
                 break;
             }
         };
+        if let Some(counter) = &args.packet_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
         let packet = decode(record.data, record.linktype, DecodeDepth::L4);
         for flow in table.push(&record, &packet) {
             if let Err(error) = writer.push(&flow) {
@@ -910,6 +982,13 @@ fn parse_seconds(value: &str) -> Result<f64, String> {
 }
 
 fn packets(args: PacketsArgs) -> ExitCode {
+    if args.inputs.len() > 1 {
+        return packets_multi(args);
+    }
+    packets_single(args)
+}
+
+fn packets_single(args: PacketsArgs) -> ExitCode {
     let format = match output_format(args.format, &args.output) {
         Ok(format) => format,
         Err(error) => {
@@ -939,7 +1018,7 @@ fn packets(args: PacketsArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut capture = match Capture::open(&args.input) {
+    let mut capture = match Capture::open(&args.inputs[0]) {
         Ok(capture) => capture,
         Err(error) => {
             eprintln!("packet-tools packets: {error}");
@@ -952,6 +1031,16 @@ fn packets(args: PacketsArgs) -> ExitCode {
         Depth::L3 => DecodeDepth::L3,
         Depth::L4 => DecodeDepth::L4,
     };
+    let mut flow_table = fields.contains(&Field::FlowUid).then(|| {
+        FlowTable::new(FlowConfig {
+            policy: flow_policy(args.policy),
+            preset: Preset::Minimal,
+            flow_timeout: Duration::from_secs_f64(args.flow_timeout),
+            idle_timeout: Duration::from_secs_f64(args.idle_timeout),
+            vlan_in_key: args.vlan_in_key,
+            ..FlowConfig::default()
+        })
+    });
     let mut read_error = None;
     let mut written = 0u64;
     while args.limit.is_none_or(|limit| written < limit) {
@@ -965,8 +1054,19 @@ fn packets(args: PacketsArgs) -> ExitCode {
                 break;
             }
         };
+        if let Some(counter) = &args.packet_counter {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
         let packet = decode(record.data, record.linktype, depth);
-        if let Err(error) = writer.push(&record, &packet) {
+        let flow_uid = flow_table.as_mut().and_then(|table| {
+            if matches!(depth, DecodeDepth::L4) {
+                table.push_with_uid(&record, &packet).flow_uid
+            } else {
+                let flow_packet = decode(record.data, record.linktype, DecodeDepth::L4);
+                table.push_with_uid(&record, &flow_packet).flow_uid
+            }
+        });
+        if let Err(error) = writer.push_with_flow_uid(&record, &packet, flow_uid) {
             eprintln!("packet-tools packets: {error}");
             return ExitCode::FAILURE;
         }
@@ -981,6 +1081,14 @@ fn packets(args: PacketsArgs) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+fn flow_policy(policy: FlowPolicy) -> Policy {
+    match policy {
+        FlowPolicy::Corrected => Policy::Corrected,
+        FlowPolicy::Cicflowmeter => Policy::CicFlowMeter,
+        FlowPolicy::IdleOnly => Policy::IdleOnly,
     }
 }
 
@@ -1003,18 +1111,319 @@ fn output_format(explicit: Option<OutputFormat>, output: &Path) -> Result<Format
     }
 }
 
+#[derive(Clone)]
+struct MultiInput {
+    id: usize,
+    input: PathBuf,
+    output_dir: PathBuf,
+    relative_output_dir: PathBuf,
+}
+
+struct MultiResult {
+    packets: u64,
+    error: Option<String>,
+}
+
+fn packets_multi(args: PacketsArgs) -> ExitCode {
+    let format = args.format.unwrap_or(OutputFormat::Parquet);
+    let extension = output_extension(format);
+    let inputs = args.inputs.clone();
+    let output = args.output.clone();
+    run_multi_inputs("packets", &inputs, &output, args.jobs, move |item| {
+        let mut one = args.clone();
+        one.inputs = vec![item.input.clone()];
+        one.output = item.output_dir.join(format!("packets.{extension}"));
+        one.format = Some(format);
+        run_single_and_count(&item.input, |counter| {
+            one.packet_counter = Some(counter);
+            packets_single(one)
+        })
+    })
+}
+
+fn flows_multi(args: FlowsArgs) -> ExitCode {
+    let format = args.format.unwrap_or(OutputFormat::Parquet);
+    let extension = output_extension(format);
+    let inputs = args.inputs.clone();
+    let output = args.output.clone();
+    run_multi_inputs("flows", &inputs, &output, args.jobs, move |item| {
+        let mut one = args.clone();
+        one.inputs = vec![item.input.clone()];
+        one.output = item.output_dir.join(format!("flows.{extension}"));
+        one.format = Some(format);
+        run_single_and_count(&item.input, |counter| {
+            one.packet_counter = Some(counter);
+            flows_single(one)
+        })
+    })
+}
+
+fn streams_multi(args: StreamsArgs) -> ExitCode {
+    if args.events.is_some() || args.datagrams.is_some() || args.dump_dir.is_some() {
+        eprintln!(
+            "packet-tools streams: --events, --datagrams, and --dump-dir cannot be used with multiple inputs"
+        );
+        return ExitCode::FAILURE;
+    }
+    let format = args.format.unwrap_or(OutputFormat::Parquet);
+    let extension = output_extension(format);
+    let inputs = args.inputs.clone();
+    let output = args.output.clone();
+    run_multi_inputs("streams", &inputs, &output, args.jobs, move |item| {
+        let mut one = args.clone();
+        one.inputs = vec![item.input.clone()];
+        one.output = item.output_dir.join(format!("streams.{extension}"));
+        one.events = Some(item.output_dir.join(format!("events.{extension}")));
+        one.datagrams = Some(item.output_dir.join(format!("datagrams.{extension}")));
+        one.format = Some(format);
+        run_single_and_count(&item.input, |counter| {
+            one.packet_counter = Some(counter);
+            streams_single(one)
+        })
+    })
+}
+
+fn app_multi(args: AppArgs) -> ExitCode {
+    let inputs = args.inputs.clone();
+    let output = args.output.clone();
+    run_multi_inputs("app", &inputs, &output, args.jobs, move |item| {
+        let mut one = args.clone();
+        one.inputs = vec![item.input.clone()];
+        one.output = item.output_dir.clone();
+        run_single_and_count(&item.input, |counter| {
+            one.packet_counter = Some(counter);
+            app_single(one)
+        })
+    })
+}
+
+fn run_single_and_count(input: &Path, run: impl FnOnce(Arc<AtomicU64>) -> ExitCode) -> MultiResult {
+    let counter = Arc::new(AtomicU64::new(0));
+    let status = run(Arc::clone(&counter));
+    let error = (status != ExitCode::SUCCESS).then(|| {
+        validate_file(input, false)
+            .error
+            .unwrap_or_else(|| "processing failed; see stderr".to_owned())
+    });
+    MultiResult {
+        packets: counter.load(Ordering::Relaxed),
+        error,
+    }
+}
+
+fn run_multi_inputs<F>(
+    command: &str,
+    inputs: &[PathBuf],
+    output: &Path,
+    jobs: usize,
+    process: F,
+) -> ExitCode
+where
+    F: Fn(&MultiInput) -> MultiResult + Sync,
+{
+    let items = match prepare_multi_inputs(inputs, output) {
+        Ok(items) => items,
+        Err(error) => {
+            eprintln!("packet-tools {command}: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let next = AtomicUsize::new(0);
+    let results = Mutex::new(
+        (0..items.len())
+            .map(|_| None)
+            .collect::<Vec<Option<MultiResult>>>(),
+    );
+    thread::scope(|scope| {
+        for _ in 0..jobs.min(items.len()) {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else {
+                        break;
+                    };
+                    let result = process(item);
+                    results.lock().expect("result mutex poisoned")[index] = Some(result);
+                }
+            });
+        }
+    });
+    let results = results.into_inner().expect("result mutex poisoned");
+    if let Err(error) = write_inputs_csv(output, &items, &results) {
+        eprintln!("packet-tools {command}: {error}");
+        return ExitCode::FAILURE;
+    }
+    let failures = items
+        .iter()
+        .zip(&results)
+        .filter_map(|(item, result)| {
+            result
+                .as_ref()
+                .and_then(|result| result.error.as_deref())
+                .map(|error| (item, error))
+        })
+        .collect::<Vec<_>>();
+    if failures.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        eprintln!(
+            "packet-tools {command}: {} input(s) failed:",
+            failures.len()
+        );
+        for (item, error) in failures {
+            eprintln!("  {}: {error}", item.input.display());
+        }
+        ExitCode::FAILURE
+    }
+}
+
+fn prepare_multi_inputs(inputs: &[PathBuf], output: &Path) -> Result<Vec<MultiInput>, String> {
+    if output.exists() {
+        if !output.is_dir() {
+            return Err(format!("output {} is not a directory", output.display()));
+        }
+        if fs::read_dir(output)
+            .map_err(|error| error.to_string())?
+            .next()
+            .is_some()
+        {
+            return Err(format!(
+                "output directory {} is not empty",
+                output.display()
+            ));
+        }
+    } else {
+        fs::create_dir_all(output).map_err(|error| error.to_string())?;
+    }
+    let normalized = inputs
+        .iter()
+        .map(|input| normalize_absolute(input))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut unique = HashSet::new();
+    for input in &normalized {
+        if !unique.insert(input.clone()) {
+            return Err(format!(
+                "input specified more than once: {}",
+                input.display()
+            ));
+        }
+    }
+    let mut common = normalized[0]
+        .parent()
+        .ok_or_else(|| "input has no parent directory".to_owned())?
+        .to_owned();
+    for input in &normalized[1..] {
+        let parent = input
+            .parent()
+            .ok_or_else(|| "input has no parent directory".to_owned())?;
+        while !parent.starts_with(&common) {
+            if !common.pop() {
+                return Err("inputs have no common parent directory".to_owned());
+            }
+        }
+    }
+    normalized
+        .iter()
+        .enumerate()
+        .map(|(id, input)| {
+            let relative = input
+                .strip_prefix(&common)
+                .map_err(|error| error.to_string())?
+                .to_owned();
+            let output_dir = output.join(&relative);
+            fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
+            Ok(MultiInput {
+                id,
+                input: inputs[id].clone(),
+                output_dir,
+                relative_output_dir: relative,
+            })
+        })
+        .collect()
+}
+
+fn normalize_absolute(path: &Path) -> Result<PathBuf, String> {
+    let absolute = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    Ok(normalized)
+}
+
+fn write_inputs_csv(
+    output: &Path,
+    items: &[MultiInput],
+    results: &[Option<MultiResult>],
+) -> std::io::Result<()> {
+    let mut csv = String::from("input_id,input,output_dir,packets,status,error\n");
+    for (item, result) in items.iter().zip(results) {
+        let result = result.as_ref().expect("every input has a result");
+        let status = if result.error.is_some() {
+            "error"
+        } else {
+            "ok"
+        };
+        csv.push_str(&format!(
+            "{},{},{},{},{},{}\n",
+            item.id,
+            csv_field(&item.input.display().to_string()),
+            csv_field(&item.relative_output_dir.display().to_string()),
+            result.packets,
+            status,
+            csv_field(result.error.as_deref().unwrap_or_default()),
+        ));
+    }
+    fs::write(output.join("inputs.csv"), csv)
+}
+
+fn csv_field(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_owned()
+    }
+}
+
+fn output_extension(format: OutputFormat) -> &'static str {
+    match format {
+        OutputFormat::Parquet => "parquet",
+        OutputFormat::Csv => "csv",
+    }
+}
+
+fn parse_jobs(value: &str) -> Result<usize, String> {
+    value
+        .parse::<usize>()
+        .ok()
+        .filter(|jobs| *jobs > 0)
+        .ok_or_else(|| format!("jobs must be a positive integer: `{value}`"))
+}
+
 fn validate(args: ValidateArgs) -> ExitCode {
-    let mut reports = Vec::with_capacity(args.files.len());
+    let reports = parallel_map_ordered(&args.files, args.jobs, |path| {
+        validate_file(path, args.mmap)
+    });
     let mut failed = false;
-    for path in args.files {
-        let report = validate_file(&path, args.mmap);
+    for report in &reports {
         failed |= report.error.is_some() || report.stats.truncated_tail;
         if args.json {
-            print_json(&report);
+            print_json(report);
         } else {
-            print_human(&report);
+            print_human(report);
         }
-        reports.push(report);
     }
 
     let packets = reports
@@ -1051,6 +1460,35 @@ fn validate(args: ValidateArgs) -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+fn parallel_map_ordered<T, R, F>(items: &[T], jobs: usize, process: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    let next = AtomicUsize::new(0);
+    let results = Mutex::new((0..items.len()).map(|_| None).collect::<Vec<Option<R>>>());
+    thread::scope(|scope| {
+        for _ in 0..jobs.min(items.len()) {
+            scope.spawn(|| {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else {
+                        break;
+                    };
+                    results.lock().expect("result mutex poisoned")[index] = Some(process(item));
+                }
+            });
+        }
+    });
+    results
+        .into_inner()
+        .expect("result mutex poisoned")
+        .into_iter()
+        .map(|result| result.expect("every input has a result"))
+        .collect()
 }
 
 fn validate_file(path: &Path, mmap: bool) -> FileReport {

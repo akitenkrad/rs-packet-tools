@@ -112,6 +112,7 @@ struct Span {
 struct Interval {
     start: usize,
     bytes: Arc<[u8]>,
+    allocation_id: u64,
     data_start: usize,
     data_end: usize,
     owner: Span,
@@ -134,19 +135,18 @@ impl Interval {
         Self {
             start,
             bytes: Arc::clone(&self.bytes),
+            allocation_id: self.allocation_id,
             data_start: self.data_start + start - self.start,
             data_end: self.data_start + end - self.start,
             owner: self.owner,
         }
     }
 
-    fn backing_key(&self) -> usize {
-        self.bytes.as_ptr() as usize
-    }
-
-    fn compact_backing(mut self) -> Self {
+    fn compact_backing(mut self, next_allocation_id: &mut u64) -> Self {
         if self.bytes.len() > self.len().saturating_mul(2) {
             self.bytes = Arc::from(self.as_slice());
+            self.allocation_id = *next_allocation_id;
+            *next_allocation_id = next_allocation_id.wrapping_add(1);
             self.data_start = 0;
             self.data_end = self.bytes.len();
         }
@@ -171,6 +171,7 @@ pub struct FragmentBuffer {
     final_len: Option<usize>,
     overlaps: usize,
     conflicts: usize,
+    next_allocation_id: u64,
 }
 
 impl FragmentBuffer {
@@ -181,6 +182,7 @@ impl FragmentBuffer {
             final_len: None,
             overlaps: 0,
             conflicts: 0,
+            next_allocation_id: 0,
         }
     }
 
@@ -201,10 +203,13 @@ impl FragmentBuffer {
             packet_index,
             ts_ns: 0,
         };
+        let allocation_id = self.next_allocation_id;
+        self.next_allocation_id = self.next_allocation_id.wrapping_add(1);
         let (intervals, events) = overlay_intervals(
             std::mem::take(&mut self.intervals),
             new_owner,
             Arc::from(data),
+            allocation_id,
             0,
             |new, old| ip_new_wins(self.policy, new, old),
         );
@@ -245,7 +250,7 @@ impl FragmentBuffer {
         self.conflicts
     }
 
-    /// Estimated heap allocation for payload and interval metadata.
+    /// Capacity-independent estimate of retained payload and interval metadata.
     pub fn allocated_bytes(&self) -> usize {
         interval_allocated_bytes(&self.intervals)
     }
@@ -273,13 +278,14 @@ pub struct TcpSegmentBuffer {
     policy: TcpPolicy,
     pub(crate) isn: u32,
     intervals: BTreeMap<usize, Interval>,
-    payload_refs: AHashMap<usize, (usize, usize)>,
+    payload_refs: AHashMap<u64, (usize, usize)>,
     payload_bytes: usize,
     stored_bytes: usize,
     immutable_prefix: usize,
     end: usize,
     contiguous: usize,
     history_bytes: usize,
+    next_allocation_id: u64,
 }
 
 impl TcpSegmentBuffer {
@@ -299,6 +305,7 @@ impl TcpSegmentBuffer {
             end: 0,
             contiguous: 0,
             history_bytes,
+            next_allocation_id: 0,
         }
     }
 
@@ -348,10 +355,13 @@ impl TcpSegmentBuffer {
                 overlapping.push(interval);
             }
         }
+        let allocation_id = self.next_allocation_id;
+        self.next_allocation_id = self.next_allocation_id.wrapping_add(1);
         let (intervals, events) = overlay_intervals(
             overlapping,
             new_owner,
             Arc::from(data),
+            allocation_id,
             self.immutable_prefix,
             |new, old| tcp_new_wins(self.policy, new, old),
         );
@@ -479,7 +489,7 @@ impl TcpSegmentBuffer {
             .map(|(_, interval)| interval.end())
     }
 
-    /// Estimated heap allocation for payload and interval metadata.
+    /// Capacity-independent estimate of retained payload and interval metadata.
     pub fn allocated_bytes(&self) -> usize {
         self.payload_bytes
             .saturating_add(self.intervals.len().saturating_mul(
@@ -487,8 +497,8 @@ impl TcpSegmentBuffer {
             ))
             .saturating_add(
                 self.payload_refs
-                    .capacity()
-                    .saturating_mul(std::mem::size_of::<(usize, (usize, usize))>()),
+                    .len()
+                    .saturating_mul(std::mem::size_of::<(u64, (usize, usize))>()),
             )
     }
 
@@ -532,7 +542,11 @@ impl TcpSegmentBuffer {
             let interval = self.intervals.remove(&key).expect("collected key");
             self.uncharge(&interval);
             if interval.end() > position {
-                tail = Some(interval.slice(position, interval.end()).compact_backing());
+                tail = Some(
+                    interval
+                        .slice(position, interval.end())
+                        .compact_backing(&mut self.next_allocation_id),
+                );
             }
         }
         if let Some(interval) = tail {
@@ -553,7 +567,7 @@ impl TcpSegmentBuffer {
         self.stored_bytes = self.stored_bytes.saturating_add(interval.len());
         let entry = self
             .payload_refs
-            .entry(interval.backing_key())
+            .entry(interval.allocation_id)
             .or_insert((interval.bytes.len(), 0));
         if entry.1 == 0 {
             self.payload_bytes = self.payload_bytes.saturating_add(entry.0);
@@ -563,7 +577,7 @@ impl TcpSegmentBuffer {
 
     fn uncharge(&mut self, interval: &Interval) {
         self.stored_bytes = self.stored_bytes.saturating_sub(interval.len());
-        let key = interval.backing_key();
+        let key = interval.allocation_id;
         let remove = if let Some(entry) = self.payload_refs.get_mut(&key) {
             entry.1 -= 1;
             if entry.1 == 0 {
@@ -586,12 +600,12 @@ impl TcpSegmentBuffer {
     }
 }
 
-fn interval_allocated_bytes(intervals: &Vec<Interval>) -> usize {
+fn interval_allocated_bytes(intervals: &[Interval]) -> usize {
     let mut seen = HashSet::new();
-    intervals.capacity() * std::mem::size_of::<Interval>()
+    std::mem::size_of_val(intervals)
         + intervals
             .iter()
-            .filter(|interval| seen.insert(interval.backing_key()))
+            .filter(|interval| seen.insert(interval.allocation_id))
             .map(|interval| interval.bytes.len())
             .sum::<usize>()
 }
@@ -600,6 +614,7 @@ fn overlay_intervals(
     existing: Vec<Interval>,
     new_owner: Span,
     data: Arc<[u8]>,
+    allocation_id: u64,
     immutable_prefix: usize,
     new_wins: impl Fn(Span, Span) -> bool,
 ) -> (Vec<Interval>, Vec<OverlapEvent>) {
@@ -615,7 +630,14 @@ fn overlay_intervals(
         }
         if old.start >= new_owner.end {
             if new_cursor < new_owner.end {
-                push_new_interval(&mut output, new_owner, &data, new_cursor, new_owner.end);
+                push_new_interval(
+                    &mut output,
+                    new_owner,
+                    &data,
+                    allocation_id,
+                    new_cursor,
+                    new_owner.end,
+                );
                 new_cursor = new_owner.end;
             }
             push_interval(&mut output, old);
@@ -629,7 +651,14 @@ fn overlay_intervals(
             let gap_end = old.start.min(new_owner.end);
             let gap_start = new_cursor.max(immutable_prefix);
             if gap_start < gap_end {
-                push_new_interval(&mut output, new_owner, &data, gap_start, gap_end);
+                push_new_interval(
+                    &mut output,
+                    new_owner,
+                    &data,
+                    allocation_id,
+                    gap_start,
+                    gap_end,
+                );
             }
             new_cursor = gap_end;
         }
@@ -642,8 +671,11 @@ fn overlay_intervals(
             &mut output,
             &mut events,
             &old,
-            new_owner,
-            &data,
+            NewInterval {
+                owner: new_owner,
+                data: &data,
+                allocation_id,
+            },
             overlap_start..split,
             false,
         );
@@ -651,8 +683,11 @@ fn overlay_intervals(
             &mut output,
             &mut events,
             &old,
-            new_owner,
-            &data,
+            NewInterval {
+                owner: new_owner,
+                data: &data,
+                allocation_id,
+            },
             split..overlap_end,
             policy_replaces,
         );
@@ -669,6 +704,7 @@ fn overlay_intervals(
             &mut output,
             new_owner,
             &data,
+            allocation_id,
             remaining_start,
             new_owner.end,
         );
@@ -680,8 +716,7 @@ fn append_overlap(
     output: &mut Vec<Interval>,
     events: &mut Vec<OverlapEvent>,
     old: &Interval,
-    new_owner: Span,
-    data: &Arc<[u8]>,
+    new: NewInterval<'_>,
     range: std::ops::Range<usize>,
     replace: bool,
 ) {
@@ -697,27 +732,35 @@ fn append_overlap(
     };
     for position in start..end {
         let old_byte = old.as_slice()[position - old.start];
-        let new_byte = data[position - new_owner.start];
+        let new_byte = new.data[position - new.owner.start];
         push_event(
             events,
             position,
             old_byte != new_byte,
             retained,
             old.owner.packet_index,
-            new_owner.packet_index,
+            new.owner.packet_index,
         );
     }
     if replace {
-        push_new_interval(output, new_owner, data, start, end);
+        push_new_interval(output, new.owner, new.data, new.allocation_id, start, end);
     } else {
         push_interval(output, old.slice(start, end));
     }
+}
+
+#[derive(Clone, Copy)]
+struct NewInterval<'a> {
+    owner: Span,
+    data: &'a Arc<[u8]>,
+    allocation_id: u64,
 }
 
 fn push_new_interval(
     output: &mut Vec<Interval>,
     owner: Span,
     data: &Arc<[u8]>,
+    allocation_id: u64,
     start: usize,
     end: usize,
 ) {
@@ -727,6 +770,7 @@ fn push_new_interval(
             Interval {
                 start,
                 bytes: Arc::clone(data),
+                allocation_id,
                 data_start: start - owner.start,
                 data_end: end - owner.start,
                 owner,
@@ -742,7 +786,7 @@ fn push_interval(output: &mut Vec<Interval>, interval: Interval) {
     if let Some(last) = output.last_mut()
         && last.end() == interval.start
         && last.owner == interval.owner
-        && Arc::ptr_eq(&last.bytes, &interval.bytes)
+        && last.allocation_id == interval.allocation_id
         && last.data_end == interval.data_start
     {
         last.data_end = interval.data_end;
@@ -797,7 +841,7 @@ fn push_event(
 
 #[cfg(test)]
 mod tcp_storage_tests {
-    use super::{TcpPolicy, TcpSegmentBuffer};
+    use super::{FragmentBuffer, IpPolicy, TcpPolicy, TcpSegmentBuffer};
 
     #[test]
     fn overlap_splits_share_the_original_payload_allocation() {
@@ -808,5 +852,20 @@ mod tcp_storage_tests {
         assert_eq!(buffer.interval_count(), 3);
         assert_eq!(buffer.backing_allocation_count(), 2);
         assert_eq!(buffer.buffered_bytes(), 64 * 1024);
+    }
+
+    #[test]
+    fn memory_estimates_ignore_spare_container_capacity() {
+        let mut fragments = FragmentBuffer::new(IpPolicy::First);
+        fragments.insert(0, true, b"fragment", 1);
+        let fragment_bytes = fragments.allocated_bytes();
+        fragments.intervals.reserve(1_024);
+        assert_eq!(fragments.allocated_bytes(), fragment_bytes);
+
+        let mut stream = TcpSegmentBuffer::new(TcpPolicy::First, 0);
+        stream.insert(1, b"segment", 1);
+        let stream_bytes = stream.allocated_bytes();
+        stream.payload_refs.reserve(1_024);
+        assert_eq!(stream.allocated_bytes(), stream_bytes);
     }
 }

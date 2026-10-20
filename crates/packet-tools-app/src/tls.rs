@@ -29,11 +29,13 @@ impl HandshakeBuffer {
         })
     }
     fn allocated_bytes(&self) -> usize {
-        self.bytes.capacity().saturating_add(
-            self.sources
-                .capacity()
-                .saturating_mul(std::mem::size_of::<(usize, usize, ByteSource)>()),
-        )
+        self.bytes
+            .len()
+            .saturating_add(self.sources.len().saturating_mul(std::mem::size_of::<(
+                usize,
+                usize,
+                ByteSource,
+            )>()))
     }
 }
 

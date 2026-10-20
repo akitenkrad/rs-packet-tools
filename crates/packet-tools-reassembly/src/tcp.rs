@@ -577,7 +577,7 @@ impl TcpReassembler {
         self.connections.len()
     }
 
-    /// Estimated heap allocation used by retained TCP payload and interval metadata.
+    /// Capacity-independent estimate of retained TCP payload and interval metadata.
     pub fn estimated_memory_bytes(&self) -> usize {
         self.allocated_bytes
     }

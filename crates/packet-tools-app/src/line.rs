@@ -197,9 +197,9 @@ impl AppParser for FtpParser {
     fn allocated_bytes(&self) -> usize {
         let multiline = self.multiline.as_ref().map_or(0, |(_, lines, _)| {
             lines
-                .capacity()
+                .len()
                 .saturating_mul(std::mem::size_of::<String>())
-                .saturating_add(lines.iter().map(String::capacity).sum())
+                .saturating_add(lines.iter().map(String::len).sum())
         });
         self.buffers
             .iter()
@@ -563,7 +563,7 @@ impl AppParser for TelnetParser {
     fn allocated_bytes(&self) -> usize {
         self.directions
             .iter()
-            .map(|direction| direction.line.capacity())
+            .map(|direction| direction.line.len())
             .sum()
     }
     fn release_buffered(&mut self) -> bool {

@@ -35,7 +35,7 @@ Scapy は便利ですが，パケットを読んだ時点で全層を Python の
 | `packet-tools-app` | アプリ層の解析器と，その登録の仕組み |
 | `packet-tools-export` | Parquet と CSV への書き出し |
 
-このほか，公開しない workspace のメンバーが 2 つあります．`packet-tools-fixtures` は試験用の合成キャプチャを作り，`bench/rsbench` はベンチマークで使う Rust の比較対象です．
+このほか，公開しない workspace のメンバーが 2 つあります．`packet-tools-fixtures` は試験用の合成キャプチャを作り，`bench/rsbench` はベンチマークで使う Rust の比較対象です．workspace から除外した独立 crate `bench/ptbench` は，ベンチマーク専用の依存を workspace の CI に加えず，runvault に計測 run を記録します．
 
 データは次の順に crate を通ります．
 
@@ -67,6 +67,6 @@ capture -> dissect -> flow ----------------------> export
 | M3 | `packet-tools-flow` と `flows` 表（完了） |
 | M4 | `packet-tools-reassembly`（完了） |
 | M5 | `packet-tools-app`（完了） |
-| M6 | 並列処理と性能の報告 |
+| M6 | ファイル単位の並列化，packets の `flow_uid`，ベンチマークの記録（完了） |
 
 パケットの生成とライブキャプチャは，当面は対象外です．入力は trait として設計するので，あとからライブキャプチャの入力も追加できます．

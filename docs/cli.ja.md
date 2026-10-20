@@ -14,6 +14,16 @@ Commands:
   help      Print this message or the help of the given subcommand(s)
 ```
 
+## 複数入力
+
+すべてのサブコマンドが `--jobs N`（既定 1）を受け取ります．ワーカーは次の未処理入力を順次取得し，1 個のキャプチャの中は 1 スレッドで処理します．`validate` は結果を保持し，入力順に出力します．ほかのコマンドでは，入力が 1 個なら従来のファイルまたはディレクトリ出力を保ちます．
+
+入力が 2 個以上なら，`-o` は出力ディレクトリです．存在しなければ作り，存在する場合は空でなければなりません．`--format` を省略したときは Parquet を使います．各キャプチャのディレクトリ名には，入力どうしの最長共通親ディレクトリより下のパス全体を使います．入力のファイル名もディレクトリ名に含むため，同じ basename は衝突しません．たとえば `a/week5/tuesday/inside.tcpdump.gz` は `OUT/week5/tuesday/inside.tcpdump.gz/` になります．
+
+各ディレクトリには，`packets.<ext>`，`flows.<ext>`，`streams.<ext>` と `events.<ext>` と `datagrams.<ext>` の 3 表，または通常の `app` 表一式を書きます．複数入力の `streams` では `--events`，`--datagrams`，`--dump-dir` を指定できません．同じ入力の重複もエラーです．`OUT/inputs.csv` は `input_id,input,output_dir,packets,status,error` を引数の順に記録します．1 入力が失敗しても残りを処理し，すべてのワーカーが終わった後で失敗一覧を標準エラーへ出し，終了コード 1 を返します．
+
+`--memory`，`--app-memory`，`--stream-memory` はジョブごとの上限です．したがって `--jobs N` の全体では，選んだジョブ単位の上限のおよそ N 倍まで使うことがあります．
+
 ## `validate`
 
 1 つ以上のキャプチャを最後まで読み，ファイルごとの要約を出します．キャプチャを最後まで読めるかを確かめ，ファイルの中身を報告するためのコマンドです．パケットの解析はしません．
@@ -27,6 +37,7 @@ Arguments:
 Options:
       --json  Emit one JSON object per line
       --mmap  Memory-map uncompressed regular files instead of reading them through a buffer
+      --jobs <JOBS>  同時に処理するキャプチャ数 [default: 1]
 ```
 
 形式は先頭のバイトで判定するので，`*.pcap` という名前の pcapng ファイルも，gzip で圧縮したキャプチャもそのまま扱えます．対応する入力は，旧形式の PCAP（リトルエンディアンとビッグエンディアン，マイクロ秒とナノ秒），pcapng（セクションとインターフェースの数は問わない），およびそれらを gzip で圧縮したものです．
@@ -58,16 +69,21 @@ total files=2 packets=41 regressions=2
 パケットごとに 1 行，L2〜L4 のヘッダの項目を Parquet か CSV に書き出します．
 
 ```text
-Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUT>  Input capture
+  <INPUTS>...  Input captures
 
 Options:
       --fields <FIELDS>  Comma-separated output column names
       --format <FORMAT>  Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
       --limit <LIMIT>    Write at most this many packets
       --depth <DEPTH>    Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
+      --policy <POLICY>  flow_uid に使うフロー方針 [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --flow-timeout <SECONDS>  [default: 120]
+      --idle-timeout <SECONDS>  [default: 60]
+      --vlan-in-key
+      --jobs <JOBS>      同時に処理するキャプチャ数 [default: 1]
   -o, --output <OUTPUT>  Output file
 ```
 
@@ -109,6 +125,9 @@ Parquet は Snappy で圧縮します．CSV では，値が無いところは空
 | `trailer_len` | UInt32 | IP データグラムの終わりより後ろのバイト数（Ethernet のパディングなど） |
 | `ip_truncated` | Boolean | IP の長さフィールドが，キャプチャされたバイト数より大きい |
 | `malformed` | Utf8 | 壊れたヘッダで解析が止まった位置．`<layer>:<kind>@<offset>` の形（例 `ipv4:bad_length@14`） |
+| `flow_uid` | UInt64 | 選んだ方針でパケットを受け入れたフローの識別子．数えないパケットは null |
+
+`flow_uid` は既定列の最後です．`flows` と同じ設定の `FlowTable` にパケットを通して作るため，方針とタイムアウトによって値が変わります．`--fields` で `flow_uid` を選ばなければ，フロー表を作りません．`cicflowmeter` は互換性のため，受理した 1 パケットだけのフローを `flows` に出しません．そのため，対応するフロー行がない `flow_uid` を packets 行が持つことがあります．
 
 長さとフラグメントの扱い:
 
@@ -123,10 +142,10 @@ Parquet は Snappy で圧縮します．CSV では，値が無いところは空
 キャプチャの順に双方向フローを組み立て，CSV または Snappy 圧縮の Parquet に書き出します．
 
 ```text
-Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUT>  Input capture
+  <INPUTS>...  Input captures
 
 Options:
       --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
@@ -160,7 +179,7 @@ minimal プリセットは 21 列です．互換プリセットは packet-tools 
 IPv4／IPv6 フラグメントを再び組み立て，完成した raw IP を解析してから，TCP の各方向を再構成します．
 
 ```text
-Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Options:
       --ip-policy <IP_POLICY>          [default: bsd]
@@ -189,7 +208,7 @@ TCP 方針は `first`，`last`，`bsd`，`linux`，`old-linux`，`solaris` で�
 
 `on-ack` は相手が ACK した位置まで配送を待つため，配送前に届いた重なりへ方針を適用できます．`immediate` は連続した prefix がそろった時点で配送します．配送済みのバイトは変更せず，あとから内容の異なる重なりが来た場合は `tcp_late_overlap_conflict` を記録します．SYN，FIN，RST がなく，payload が 0 または 1 バイトで，sequence number が次に期待するバイトの 1 つ前にある segment は keepalive として数え，buffer へ入れず，重なりとしても扱いません．FIN の完了，受理した RST，timeout，capture の終端では残りを配送し，届いていない範囲を gap として渡します．
 
-IP 断片と TCP payload は，重ならない区間として保持します．`--stream-memory` と `--memory` は，sequence space の欠けた範囲ではなく，payload の capacity と区間の管理領域を算入します．遅れて届いた重なりの食い違いを検出するため，各方向で配送済み payload の直近 1 MiB までを残しますが，`--stream-memory` の半分を上限とし，この履歴も上限に算入します．TCP の上限に達した場合は，届いている最古の区間まで進み，必要な gap と `tcp_memory_limit` を出します．
+IP 断片と TCP payload は，重ならない区間として保持します．`--stream-memory` と `--memory` は，sequence space の欠けた範囲や allocator の capacity ではなく，保持中の payload byte 数と論理的な区間 metadata を算入します．遅れて届いた重なりの食い違いを検出するため，各方向で配送済み payload の直近 1 MiB までを残しますが，`--stream-memory` の半分を上限とし，この履歴も上限に算入します．TCP の上限に達した場合は，届いている最古の区間まで進み，必要な gap と `tcp_memory_limit` を出します．見積りは allocation address や scheduling ではなく，入力 packet 列だけで決まります．
 
 受理した RST または双方の FIN が完了した後も，閉じた接続を 60 秒の closing timeout が過ぎるまで key に対応づけて残します．その間の SYN（ACK なし）以外の packet は配送せず，packet 数と payload bytes を `post_close_packets` と `post_close_bytes` に数えます．payload がある packet ごとに `tcp_data_after_close` を記録します．SYN（ACK なし）は直ちに新しい接続を開始し，closing timeout 後は任意の packet が新しい midstream 接続を開始できます．
 
@@ -202,7 +221,7 @@ IP 断片と TCP payload は，重ならない区間として保持します．`
 IP フラグメントと TCP ストリームを再構成し，アプリ層の事象を解析して，選んだプロトコルごとの表へ書き出します．
 
 ```text
-Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Options:
       --ip-policy <IP_POLICY>      [default: bsd]
@@ -221,7 +240,7 @@ packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pca
 
 ポート番号は解析器の候補を並べるためだけに使います．midstream 接続では後から届くバイト列も含め，各方向を独立に 64 KiB まで調べます．どちらか一方の `probe` が `Certain` を返した時点で解析器を決めるため，反対方向が本文の途中から始まっていても，標準外のポートにある HTTP，TLS，SSH，FTP，SMTP を検出できます．確実に判定できなかったストリームは `dispatch` に `unknown` として残し，解析しません．先頭の壊れたバイト列や TCP の gap がある場合，HTTP と行指向の解析器は次の識別可能な行から再開し，TLS は妥当なレコード境界を探します．gap，再開できない理由，再同期で読み飛ばしたバイト数は `dispatch.stop_reason` に残ります．
 
-`--memory` は TCP 再構成が保持するデータを制限します．`--app-memory` は probe 待ちのデータと解析途中のメッセージが確保した capacity の合計を別に制限し，既定値は 256 MiB です．上限を超えると，未判定のストリームは古いものから判定を中止します．解析器を選択済みの場合は，そのプロトコルで可能なら未完成のデータを解放し，識別できる次の境界から再開します．実施内容は `dispatch.stop_reason` に残ります．
+`--memory` は TCP 再構成が保持するデータを制限します．`--app-memory` は probe 待ちのデータと解析途中のメッセージについて，保持中の byte 数と metadata 数から決まる論理サイズの合計を別に制限し，既定値は 256 MiB です．コンテナの capacity は使いません．上限を超えると，未判定のストリームは古いものから判定を中止します．解析器を選択済みの場合は，そのプロトコルで可能なら未完成のデータを解放し，識別できる次の境界から再開します．実施内容は `dispatch.stop_reason` に残ります．
 
 Parquet では，完成したアプリ層事象を有界なバッチで逐次書き出し，capture の終端まで保持しません．このため，アプリ層の上限は解析器の状態を制御し，完成済みの出力も別に有界になります．CSV は従来版との capture 順の互換性を保つため，解析の終了後に書き出します．
 

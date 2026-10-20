@@ -35,7 +35,7 @@ Other rules:
 | `packet-tools-app` | Application-layer parsers and their registration |
 | `packet-tools-export` | Writing Parquet and CSV |
 
-Two more workspace members are not published: `packet-tools-fixtures` generates the synthetic test captures, and `bench/rsbench` is the Rust baseline used in the benchmarks.
+Two workspace members are not published: `packet-tools-fixtures` generates the synthetic test captures, and `bench/rsbench` is the Rust baseline used in the benchmarks. The excluded standalone crate `bench/ptbench` records benchmark runs with runvault without adding benchmark-only dependencies to workspace CI.
 
 Data flows through the crates in this order:
 
@@ -67,6 +67,6 @@ capture -> dissect -> flow ----------------------> export
 | M3 | `packet-tools-flow` and the `flows` table (done) |
 | M4 | `packet-tools-reassembly` (done) |
 | M5 | `packet-tools-app` (done) |
-| M6 | Parallel processing and a performance report |
+| M6 | File-level parallelism, packet `flow_uid`, and recorded benchmarks (done) |
 
 Packet crafting and live capture are out of scope for now. The capture input is designed as a trait so that a live source can be added later.

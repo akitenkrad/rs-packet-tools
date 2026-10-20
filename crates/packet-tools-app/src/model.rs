@@ -231,7 +231,7 @@ pub trait AppParser: Send {
     fn feed(&mut self, dir: Direction, chunk: AppChunk<'_>, out: &mut Vec<AppEvent>);
     fn gap(&mut self, _dir: Direction, _len: u64, _out: &mut Vec<AppEvent>) {}
     fn finish(&mut self, _out: &mut Vec<AppEvent>) {}
-    /// Heap allocation currently retained for incomplete application messages.
+    /// Capacity-independent size estimate for retained incomplete messages.
     fn allocated_bytes(&self) -> usize {
         0
     }
@@ -283,9 +283,9 @@ impl Buffer {
         *self = Self::default();
     }
     pub fn allocated_bytes(&self) -> usize {
-        self.bytes.capacity().saturating_add(
+        self.bytes.len().saturating_add(
             self.sources
-                .capacity()
+                .len()
                 .saturating_mul(std::mem::size_of::<ByteSource>()),
         )
     }
@@ -324,4 +324,34 @@ pub(crate) fn dir_index(dir: Direction) -> usize {
 }
 pub(crate) fn utf8_lossy(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::{AppChunk, Buffer, ByteSource};
+
+    #[test]
+    fn buffer_memory_estimate_ignores_spare_capacity() {
+        let source = ByteSource {
+            offset: 0,
+            len: 7,
+            index: 1,
+            ts_ns: 2,
+        };
+        let chunk = AppChunk {
+            position: 0,
+            bytes: b"payload",
+            sources: &[source],
+        };
+        let mut compact = Buffer::default();
+        compact.push(chunk);
+        let mut reserved = Buffer {
+            bytes: Vec::with_capacity(4_096),
+            sources: Vec::with_capacity(64),
+            cursor: 0,
+        };
+        reserved.push(chunk);
+
+        assert_eq!(compact.allocated_bytes(), reserved.allocated_bytes());
+    }
 }

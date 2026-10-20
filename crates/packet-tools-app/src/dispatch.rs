@@ -362,20 +362,20 @@ impl AppAnalyzer {
 }
 
 fn stream_memory_bytes(state: &StreamState) -> usize {
-    let heads = state.heads.iter().map(Vec::capacity).sum::<usize>();
+    let heads = state.heads.iter().map(Vec::len).sum::<usize>();
     let pending = state
         .pending
-        .capacity()
+        .len()
         .saturating_mul(std::mem::size_of::<Pending>())
         .saturating_add(
             state
                 .pending
                 .iter()
                 .map(|pending| {
-                    pending.bytes.capacity().saturating_add(
+                    pending.bytes.len().saturating_add(
                         pending
                             .sources
-                            .capacity()
+                            .len()
                             .saturating_mul(std::mem::size_of::<ByteSource>()),
                     )
                 })

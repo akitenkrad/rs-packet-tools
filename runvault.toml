@@ -1,0 +1,56 @@
+[[metric_patterns]]
+pattern = "{capture}.{engine}.pkt_per_sec_median"
+meaning = "median packet parsing throughput for one capture and engine"
+unit = "packet/sec"
+
+[[metric_patterns]]
+pattern = "{capture}.speedup_vs_scapy"
+meaning = "packet-tools median throughput divided by Scapy median throughput"
+unit = "ratio"
+
+[[metric_patterns]]
+pattern = "{capture}.speedup_vs_etherparse"
+meaning = "packet-tools median throughput divided by etherparse median throughput"
+unit = "ratio"
+
+[[metric_patterns]]
+pattern = "{capture}.packets"
+meaning = "packets processed from one benchmark capture"
+unit = "packet"
+
+[metrics."e2e.packets"]
+meaning = "packets in the complete end-to-end input set"
+unit = "packet"
+
+[metrics."e2e.bytes"]
+meaning = "file bytes in the complete end-to-end input set"
+unit = "byte"
+
+[metrics."e2e.scapy_estimate.seconds"]
+meaning = "estimated Scapy processing time for the complete input set"
+unit = "sec"
+
+[[metric_patterns]]
+pattern = "e2e.{command}.seconds"
+meaning = "wall-clock time spent by the measured end-to-end command"
+unit = "sec"
+
+[[metric_patterns]]
+pattern = "e2e.{command}.cpu_seconds"
+meaning = "child-process user plus system CPU time used by the measured command"
+unit = "sec"
+
+[[metric_patterns]]
+pattern = "e2e.{command}.max_rss_bytes"
+meaning = "maximum resident set size reported for child processes"
+unit = "byte"
+
+[[metric_patterns]]
+pattern = "e2e.{command}.mb_per_sec"
+meaning = "input file megabytes processed per wall-clock second"
+unit = "MB/sec"
+
+[[metric_patterns]]
+pattern = "e2e.{command}.speedup_vs_scapy_estimate"
+meaning = "estimated Scapy time divided by measured command wall-clock time"
+unit = "ratio"

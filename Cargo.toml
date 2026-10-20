@@ -11,6 +11,7 @@ members = [
     "crates/packet-tools-fixtures",
     "bench/rsbench",
 ]
+exclude = ["bench/ptbench"]
 
 [workspace.package]
 version = "0.1.0"

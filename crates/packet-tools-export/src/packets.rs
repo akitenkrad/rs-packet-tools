@@ -64,6 +64,7 @@ pub enum Field {
     TrailerLen,
     IpTruncated,
     Malformed,
+    FlowUid,
 }
 
 impl Field {
@@ -102,6 +103,7 @@ impl Field {
         Self::TrailerLen,
         Self::IpTruncated,
         Self::Malformed,
+        Self::FlowUid,
     ];
 
     pub fn name(self) -> &'static str {
@@ -140,12 +142,13 @@ impl Field {
             Self::TrailerLen => "trailer_len",
             Self::IpTruncated => "ip_truncated",
             Self::Malformed => "malformed",
+            Self::FlowUid => "flow_uid",
         }
     }
 
     fn data_type(self) -> DataType {
         match self {
-            Self::Index => DataType::UInt64,
+            Self::Index | Self::FlowUid => DataType::UInt64,
             Self::TsNs => DataType::Int64,
             Self::Caplen
             | Self::Origlen
@@ -276,7 +279,17 @@ impl<W: Write + Send> PacketsWriter<W> {
     }
 
     pub fn push(&mut self, record: &PacketRecord<'_>, packet: &Packet<'_>) -> Result<(), Error> {
-        self.rows.push(Row::new(record, packet));
+        self.push_with_flow_uid(record, packet, None)
+    }
+
+    /// Buffers one packet together with the flow identifier assigned by the selected policy.
+    pub fn push_with_flow_uid(
+        &mut self,
+        record: &PacketRecord<'_>,
+        packet: &Packet<'_>,
+        flow_uid: Option<u64>,
+    ) -> Result<(), Error> {
+        self.rows.push(Row::new(record, packet, flow_uid));
         if self.rows.len() == BATCH_SIZE {
             self.flush()?;
         }
@@ -369,10 +382,11 @@ struct Row {
     trailer_len: u32,
     ip_truncated: bool,
     malformed: Option<String>,
+    flow_uid: Option<u64>,
 }
 
 impl Row {
-    fn new(record: &PacketRecord<'_>, packet: &Packet<'_>) -> Self {
+    fn new(record: &PacketRecord<'_>, packet: &Packet<'_>, flow_uid: Option<u64>) -> Self {
         let mut row = Self {
             index: record.index,
             ts_ns: record.ts_ns,
@@ -390,6 +404,7 @@ impl Row {
                     malformed.offset
                 )
             }),
+            flow_uid,
             ..Self::default()
         };
         if let Some(ethernet) = packet.layer::<EthernetView>() {
@@ -524,6 +539,7 @@ fn column(field: Field, rows: &[Row]) -> ArrayRef {
             rows.iter().map(|row| row.ip_truncated).collect::<Vec<_>>(),
         )),
         Field::Malformed => string_column(rows.iter().map(|row| row.malformed.as_deref())),
+        Field::FlowUid => primitive_column!(rows, UInt64Array, flow_uid),
     }
 }
 

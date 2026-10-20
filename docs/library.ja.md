@@ -130,25 +130,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `EndReason` の値は `fin`，`rst`，`flow_timeout`，`idle_timeout`，`end_of_capture`，`icmp_type_code_change` です．各方針では，その状態遷移で起こりうる値だけを出します．
 
+パケット行にも割り当てた識別子が必要なら，`FlowTable::push_with_uid` を使います．返り値の `PushResult` は，そのパケットによって閉じたフローと，そのパケットを受け入れたフローの `flow_uid` を持ちます．数えないパケットでは `None` です．`packets` コマンドもこの API を使うため，タイムアウトや方針の状態遷移が `flows` と分かれることはありません．互換用の `CicFlowMeter` 方針は一部の 1 パケット状態を受理しますが，`finish()` では意図的に出しません．該当するパケット識別子にはフロー行がありません．
+
 ### 安定したフロー識別子
 
-`flow_uid` は 64 ビット FNV-1a（初期値 `0xcbf29ce484222325`，素数 `0x100000001b3`）です．ハッシュへ渡すバイト列は，IP 版，プロトコル，VLAN の有無と VLAN ID のビッグエンディアン表現，正規化後の第 1 アドレスとポート，第 2 アドレスとポート，ICMP type の有無と値，ICMP identifier の有無とビッグエンディアン表現，最初の時刻を符号付き 64 ビットのビッグエンディアンで表したナノ秒，の順です．IPv4 アドレスは 4 バイト，IPv6 アドレスは 16 バイトです．packets 表や今後のアプリ層の表から同じ値を計算できるように，この形式を固定します．
+`flow_uid` は 64 ビット FNV-1a（初期値 `0xcbf29ce484222325`，素数 `0x100000001b3`）です．ハッシュへ渡すバイト列は，IP 版，プロトコル，VLAN の有無と VLAN ID のビッグエンディアン表現，正規化後の第 1 アドレスとポート，第 2 アドレスとポート，ICMP type の有無と値，ICMP identifier の有無とビッグエンディアン表現，最初の時刻を符号付き 64 ビットのビッグエンディアンで表したナノ秒，の順です．IPv4 アドレスは 4 バイト，IPv6 アドレスは 16 バイトです．交換用の形式として固定しますが，方針に依存するパケットの所属判定では，別にキーを計算せず `FlowTable` を使います．
 
 スキーマと，方針によって値が変わる特徴量は[フロー列](flows-columns.ja.md)にまとめています．
 
 ## 再構成（`packet_tools::reassembly`）
 
-`Defragmenter::push(&PacketRecord, &Packet)` は解析済み packet を受け取り，完成した `ReassembledDatagram` と型付きの `IpEvent` を返します．完成したデータグラムは `decode(bytes, LinkType(101), DecodeDepth::L4)` に渡せる raw IP のバイト列を所有します．IPv4 では全長，fragment field，checksum を直します．IPv6 では Fragment header より前の extension header を保ち，Fragment header を除き，next-header chain と payload length を直します．`DefragConfig` で方針，VLAN key，timeout，断片数，データグラム長，memory の上限を設定できます．断片の payload は開始位置順の重ならない区間として保持するため，大きな offset に孤立した断片があっても，欠けた prefix の領域は確保しません．`Defragmenter::estimated_memory_bytes` は，上限に算入する payload の capacity と区間の管理領域を返します．
+`Defragmenter::push(&PacketRecord, &Packet)` は解析済み packet を受け取り，完成した `ReassembledDatagram` と型付きの `IpEvent` を返します．完成したデータグラムは `decode(bytes, LinkType(101), DecodeDepth::L4)` に渡せる raw IP のバイト列を所有します．IPv4 では全長，fragment field，checksum を直します．IPv6 では Fragment header より前の extension header を保ち，Fragment header を除き，next-header chain と payload length を直します．`DefragConfig` で方針，VLAN key，timeout，断片数，データグラム長，memory の上限を設定できます．断片の payload は開始位置順の重ならない区間として保持するため，大きな offset に孤立した断片があっても，欠けた prefix の領域は確保しません．`Defragmenter::estimated_memory_bytes` は，保持中の payload byte 数と論理的な区間 metadata を返します．見積りには allocator のアドレスやコンテナの capacity を使わないため，入力 packet 列だけで決まります．
 
-`TcpReassembler::push` には通常の解析済み TCP packet と，再び解析した完成データグラムのどちらも渡せます．出力の `TcpItem` は `Start`，`Data`，`Gap`，`PostClose`，`End` です．`StreamChunk` は接続 ID，方向，0 始まりの stream position，`Arc<[u8]>` に加え，元 packet の index と時刻を持つ source range を含みます．`source_at` で各バイトの元 packet を調べられます．既定は `DeliveryMode::OnAck` で，`Immediate` は連続した prefix をすぐに返します．TCP の payload は順序付きの範囲 map に保持します．分割した範囲は共有した segment allocation の部分範囲を参照するため，overlap の挿入では範囲列を作り直さず，影響しない payload もコピーしません．配送済みの payload は原則として捨てますが，遅れて届いた食い違う重なりを検出するため，各方向で直近 1 MiB まで（かつ `stream_memory` の半分以下）を残します．この履歴，共有 payload allocation，区間の管理領域は両方の memory 上限に算入し，現在値は `TcpReassembler::estimated_memory_bytes` で取得できます．`PostClose` は統計だけの通知です．受理した RST または双方の FIN が完了した後は，`TcpConfig::closing_timeout` の間，接続を墓石として残します．その間の SYN（ACK なし）以外の packet は数えますが，`Data` としては返しません．SYN（ACK なし）は墓石を置き換え，timeout 後の packet は新しい midstream 接続を開始できます．`next_expected - 1` にある 0 または 1 バイトの keepalive は `DirectionSummary::keepalives` に数え，buffer と重なり判定を通しません．capture の終端で `finish()` を呼びます．
+`TcpReassembler::push` には通常の解析済み TCP packet と，再び解析した完成データグラムのどちらも渡せます．出力の `TcpItem` は `Start`，`Data`，`Gap`，`PostClose`，`End` です．`StreamChunk` は接続 ID，方向，0 始まりの stream position，`Arc<[u8]>` に加え，元 packet の index と時刻を持つ source range を含みます．`source_at` で各バイトの元 packet を調べられます．既定は `DeliveryMode::OnAck` で，`Immediate` は連続した prefix をすぐに返します．TCP の payload は順序付きの範囲 map に保持します．分割した範囲は共有した segment allocation の部分範囲を参照するため，overlap の挿入では範囲列を作り直さず，影響しない payload もコピーしません．各 backing allocation には入力順の ID を与え，課金と区間の結合にアドレスを使いません．配送済みの payload は原則として捨てますが，遅れて届いた食い違う重なりを検出するため，各方向で直近 1 MiB まで（かつ `stream_memory` の半分以下）を残します．この履歴，共有 payload byte，論理的な区間 metadata は両方の memory 上限に算入し，現在値は `TcpReassembler::estimated_memory_bytes` で取得できます．`PostClose` は統計だけの通知です．受理した RST または双方の FIN が完了した後は，`TcpConfig::closing_timeout` の間，接続を墓石として残します．その間の SYN（ACK なし）以外の packet は数えますが，`Data` としては返しません．SYN（ACK なし）は墓石を置き換え，timeout 後の packet は新しい midstream 接続を開始できます．`next_expected - 1` にある 0 または 1 バイトの keepalive は `DirectionSummary::keepalives` に数え，buffer と重なり判定を通しません．capture の終端で `finish()` を呼びます．
 
-`FragmentBuffer` と `TcpSegmentBuffer` は，protocol 適合試験から方針適用後の buffer を直接調べるための API です．`interval_count` と `allocated_bytes` で区間数と heap の推定確保量も調べられます．`packet_tools::flow` の `FlowIdentityKey::normalized` と `flow_uid` を再構成側も共有するので，`IdleOnly` flow と TCP 接続は，同じ最初の packet 時刻から同じ識別子を作ります．
+`FragmentBuffer` と `TcpSegmentBuffer` は，protocol 適合試験から方針適用後の buffer を直接調べるための API です．`interval_count` と `allocated_bytes` で区間数と決定的な memory 上限用の見積りを調べられます．`packet_tools::flow` の `FlowIdentityKey::normalized` と `flow_uid` を再構成側も共有するので，`IdleOnly` flow と TCP 接続は，同じ最初の packet 時刻から同じ識別子を作ります．
 
 ## アプリ層の解析（`packet_tools::app`）
 
 `AppParser` は `probe`，`feed`，`gap`，`finish` を提供します．`AppChunk` は所有する再構成 chunk とは別の借用 adapter であり，同じ解析器へ UDP データグラムも渡せます．`AppAnalyzer` は `TcpItem` を受け取り，各方向を独立に調べます．有効にした解析器のどれかが `Confidence::Certain` を返すまで方向ごとに最大 64 KiB を保持し，型付きの `AppEvent` と，stream ごとの `DispatchRow` を返します．このため，片方向が応答本文の途中から始まる midstream 接続でも，後から届いた反対方向のリクエストで判定できます．
 
-`AppAnalyzer::new` は，probe 待ちのデータと解析途中のメッセージに 256 MiB の全体上限を適用します．別の上限は `AppAnalyzer::with_memory_limit(protocols, bytes)` で指定し，算入中の capacity は `estimated_buffer_memory_bytes` で取得できます．上限を超えると，未判定のストリームは古いものから判定を中止します．後続の境界を探せる解析器は未完成のデータを解放して再同期します．どちらの処置も `DispatchRow::stop_reason` に残します．
+`AppAnalyzer::new` は，probe 待ちのデータと解析途中のメッセージに 256 MiB の全体上限を適用します．別の上限は `AppAnalyzer::with_memory_limit(protocols, bytes)` で指定し，保持中の byte 数と metadata 数から決まる論理サイズを `estimated_buffer_memory_bytes` で取得できます．allocator の capacity は算入しません．上限を超えると，未判定のストリームは古いものから判定を中止します．後続の境界を探せる解析器は未完成のデータを解放して再同期します．どちらの処置も `DispatchRow::stop_reason` に残します．
 
 `packet_tools_export::app::AppWriter` は，完成した事象を複数のバッチに分けて受け取り，長い capture の Parquet 出力を有界に保ちます．`write_app` は一括書き出し用の簡便 API として残しています．
 

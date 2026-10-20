@@ -261,7 +261,7 @@ impl Defragmenter {
         self.datagrams.len()
     }
 
-    /// Estimated heap allocation used by retained fragment payload and interval metadata.
+    /// Capacity-independent estimate of retained fragment payload and interval metadata.
     pub fn estimated_memory_bytes(&self) -> usize {
         self.allocated_bytes
     }

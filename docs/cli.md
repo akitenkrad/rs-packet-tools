@@ -14,6 +14,16 @@ Commands:
   help      Print this message or the help of the given subcommand(s)
 ```
 
+## Multiple inputs
+
+Every subcommand accepts `--jobs N` (default 1). Workers atomically take the next unprocessed input, and each capture remains single-threaded. `validate` buffers reports and prints them in input order. For the other commands, one input retains the existing file or directory output contract.
+
+With two or more inputs, `-o` is an output directory. It is created when absent and must contain no entries when present. Parquet is the default if `--format` is omitted. Each capture gets a directory named by its full path below the inputs' longest common parent; the input filename is part of that directory, so equal basenames do not collide. For example, `a/week5/tuesday/inside.tcpdump.gz` becomes `OUT/week5/tuesday/inside.tcpdump.gz/`.
+
+Each directory contains `packets.<ext>`, `flows.<ext>`, all three of `streams.<ext>`, `events.<ext>`, and `datagrams.<ext>`, or the normal `app` table set. Multiple-input `streams` rejects `--events`, `--datagrams`, and `--dump-dir`. Duplicate inputs are rejected. `OUT/inputs.csv` records `input_id,input,output_dir,packets,status,error` in argument order. A failed input does not stop the others; after all workers finish, failures are listed on standard error and the process exits with status 1.
+
+`--memory`, `--app-memory`, and `--stream-memory` are limits per job. Approximate total memory can therefore be up to `N` times the selected per-job limits with `--jobs N`.
+
 ## `validate`
 
 Reads every record of one or more captures and prints a summary per file. It checks that a capture can be read to the end, and it reports what the file contains. It does not dissect packets.
@@ -27,6 +37,7 @@ Arguments:
 Options:
       --json  Emit one JSON object per line
       --mmap  Memory-map uncompressed regular files instead of reading them through a buffer
+      --jobs <JOBS>  Number of capture files to process concurrently [default: 1]
 ```
 
 The format is detected from the leading bytes, so a pcapng file named `*.pcap` and a gzip-compressed capture are both handled. Supported inputs: classic PCAP (little- or big-endian, microsecond or nanosecond timestamps), pcapng (any number of sections and interfaces), and either of them compressed with gzip.
@@ -58,16 +69,21 @@ The exit status is 1 if any file fails to read or ends in the middle of a record
 Writes one row per packet, with the L2–L4 header fields, to Parquet or CSV.
 
 ```text
-Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUT>  Input capture
+  <INPUTS>...  Input captures
 
 Options:
       --fields <FIELDS>  Comma-separated output column names
       --format <FORMAT>  Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
       --limit <LIMIT>    Write at most this many packets
       --depth <DEPTH>    Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
+      --policy <POLICY>  Flow policy for flow_uid [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --flow-timeout <SECONDS>  [default: 120]
+      --idle-timeout <SECONDS>  [default: 60]
+      --vlan-in-key
+      --jobs <JOBS>      Number of capture files to process concurrently [default: 1]
   -o, --output <OUTPUT>  Output file
 ```
 
@@ -109,6 +125,9 @@ Parquet files are compressed with Snappy. In CSV, missing values are empty and b
 | `trailer_len` | UInt32 | Bytes after the end of the IP datagram, such as Ethernet padding |
 | `ip_truncated` | Boolean | The IP length is larger than what was captured |
 | `malformed` | Utf8 | Where decoding stopped on a broken header, as `<layer>:<kind>@<offset>` (for example `ipv4:bad_length@14`) |
+| `flow_uid` | UInt64 | Identifier of the policy-selected flow that accepted the packet; null for discarded packets |
+
+`flow_uid` is the last default column. It is produced by passing packets through the same `FlowTable` configuration as `flows`, so policy and timeout choices can change it. When `--fields` does not select `flow_uid`, no flow table is created. Under `cicflowmeter`, accepted one-packet flows are omitted from the `flows` output for compatibility; their packet rows can therefore contain a `flow_uid` that has no corresponding flow row.
 
 How lengths and fragments are handled:
 
@@ -123,10 +142,10 @@ The exit status is 1 if the capture cannot be read to the end. Rows read before 
 Builds bidirectional flows in capture order and writes CSV or Snappy-compressed Parquet.
 
 ```text
-Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUT>  Input capture
+  <INPUTS>...  Input captures
 
 Options:
       --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
@@ -174,7 +193,7 @@ and complete flows available before a capture error are written before exit stat
 Reassembles IPv4/IPv6 fragments, decodes completed raw-IP datagrams, and reconstructs each TCP direction.
 
 ```text
-Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Options:
       --ip-policy <IP_POLICY>          [default: bsd]
@@ -203,7 +222,7 @@ TCP policies are `first`, `last`, `bsd`, `linux`, `old-linux`, and `solaris`. Al
 
 `on-ack` delays delivery until the peer acknowledges the bytes, allowing overlaps received first to be resolved by policy. `immediate` delivers a contiguous prefix as soon as it arrives. Bytes already delivered never change; a later conflicting overlap becomes `tcp_late_overlap_conflict`. A zero- or one-byte segment at exactly one sequence number before the next expected byte, without SYN, FIN or RST, is counted as a keepalive and is neither buffered nor reported as an overlap. FIN completion, accepted RST, timeout, and capture end flush remaining ranges, emitting gaps where bytes are absent.
 
-Fragment and TCP payloads are held as disjoint ranges. `--stream-memory` and `--memory` charge payload capacity and range metadata rather than sequence-space holes. Up to the most recent 1 MiB of delivered payload per direction, capped at half of `--stream-memory`, is retained for late-overlap conflict detection and is included in the limits. Reaching a TCP limit advances through the oldest outstanding range, emits a gap where necessary, and records `tcp_memory_limit`.
+Fragment and TCP payloads are held as disjoint ranges. `--stream-memory` and `--memory` charge retained payload bytes and logical range metadata rather than sequence-space holes or allocator capacity. Up to the most recent 1 MiB of delivered payload per direction, capped at half of `--stream-memory`, is retained for late-overlap conflict detection and is included in the limits. Reaching a TCP limit advances through the oldest outstanding range, emits a gap where necessary, and records `tcp_memory_limit`. The estimate depends only on the input packet sequence, not allocation addresses or scheduling.
 
 After an accepted RST or a completed two-sided FIN close, the closed connection remains associated with its key for the 60-second closing timeout. Non-SYN packets in that interval are not delivered; packets and payload bytes are counted in `post_close_packets` and `post_close_bytes`, and each packet with payload emits `tcp_data_after_close`. A SYN without ACK starts a new connection immediately. After the closing timeout, any packet may start a new midstream connection.
 
@@ -216,7 +235,7 @@ The event table records `ip_overlap`, `ip_overlap_conflict`, `ip_timeout`, `ip_t
 Reassembles IP fragments and TCP streams, parses application events, and writes one table per selected protocol.
 
 ```text
-Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUT>
+Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Options:
       --ip-policy <IP_POLICY>      [default: bsd]
@@ -235,7 +254,7 @@ packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pca
 
 Ports only order parser candidates. Each direction is probed independently, including later bytes of a midstream connection, up to 64 KiB per direction. A parser is selected as soon as either direction returns `Certain`, so HTTP, TLS, SSH, FTP, and SMTP can be found on nonstandard ports even when the other direction begins inside a body. Streams with no certain match are recorded as `unknown` in `dispatch` and are not parsed. HTTP and line parsers scan for the next recognizable line after leading damage or a TCP gap; TLS scans for a plausible record boundary. `dispatch.stop_reason` records gaps, failed recovery, and the number of bytes skipped during resynchronization.
 
-`--memory` limits retained TCP reassembly data. `--app-memory` independently limits the total capacity of pending probe data and incomplete parser messages; its default is 256 MiB. If the application limit is exceeded, the oldest undecided stream is abandoned, or a selected parser releases incomplete data and resumes from a recognizable boundary when the protocol permits it. The action is recorded in `dispatch.stop_reason`.
+`--memory` limits retained TCP reassembly data. `--app-memory` independently limits the deterministic logical size of pending probe data and incomplete parser messages; its default is 256 MiB. The estimate uses retained byte and metadata counts rather than container capacities. If the application limit is exceeded, the oldest undecided stream is abandoned, or a selected parser releases incomplete data and resumes from a recognizable boundary when the protocol permits it. The action is recorded in `dispatch.stop_reason`.
 
 For Parquet output, completed application events are written in bounded batches instead of being retained until the end of the capture. The application-memory limit therefore covers parser state, while completed output remains bounded independently. CSV output preserves capture-order compatibility with earlier releases and is written after analysis.
 

@@ -47,6 +47,26 @@ Three more directories hold scenario captures for the later stages, each with a 
 
 Tests that need real data read their paths from environment variables and are skipped when the variables are not set. `PACKET_TOOLS_CFM_REF` names a directory with captures in `in/` and the matching CICFlowMeter output in `orig/` (ahlashkari) and `engelen/` (GintsEngelen); the test compares both policies with those CSVs. `PACKET_TOOLS_CFM_DAY` names one full-day capture used to check the flow table's memory use.
 
+## Releasing
+
+1. Update `version` in `[workspace.package]` and the versions of the internal `packet-tools-*` entries in `[workspace.dependencies]`. Regenerate `Cargo.lock` if Cargo changes it.
+2. Replace `Unreleased` in the matching CHANGELOG heading with the release date in `YYYY-MM-DD` form, and add a new `Unreleased` section for subsequent changes.
+3. Run the checks above, then verify the exact archives without publishing:
+
+   ```sh
+   cargo publish --workspace --dry-run
+   ```
+
+4. Publish the workspace:
+
+   ```sh
+   cargo publish --workspace
+   ```
+
+   Cargo 1.90 and later publishes workspace packages in dependency order. Wait for each new version to become available through the registry before retrying if propagation delays interrupt the sequence.
+5. Create and push the version tag, for example `v0.1.0`.
+6. Create a GitHub release from that tag and use the corresponding CHANGELOG section as the release notes.
+
 ## Benchmarks
 
 `bench/` compares Scapy with a minimal Rust baseline (`bench/rsbench`, built on `pcap-file` and `etherparse`) on the same task: read every packet and aggregate IPv4 bytes per 5-tuple. `rsbench --engine packet-tools` runs the same task on `packet_tools::capture` and `packet_tools::dissect`; the default is `--engine etherparse`. See [`bench/README.md`](../bench/README.md) for the full procedure. In short:

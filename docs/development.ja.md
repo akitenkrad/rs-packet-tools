@@ -61,6 +61,26 @@ pcapng のほうは，2 つ目のインターフェースに raw IP のパケッ
 
 実データを使う試験は，パスを環境変数で受け取ります．変数が無ければ，その試験は飛ばします．`PACKET_TOOLS_CFM_REF` には，`in/` にキャプチャ，`orig/`（ahlashkari 版）と `engelen/`（GintsEngelen 版）に対応する CICFlowMeter の出力を置いたディレクトリを指定します．試験は両方の方針の結果をそれらの CSV と比べます．`PACKET_TOOLS_CFM_DAY` には 1 日分のキャプチャを 1 つ指定し，フロー表のメモリ使用量を確かめます．
 
+## リリース
+
+1. `[workspace.package]` の `version` と，`[workspace.dependencies]` にある内部の `packet-tools-*` 依存の版を更新します．Cargo によって変わる場合は `Cargo.lock` も更新します．
+2. CHANGELOG の該当する見出しにある `Unreleased` を `YYYY-MM-DD` 形式の公開日に置き換え，次の変更に備えて新しい `Unreleased` 節を追加します．
+3. 上記の検査を実行し，公開せずに実際のアーカイブを確かめます．
+
+   ```sh
+   cargo publish --workspace --dry-run
+   ```
+
+4. workspace を公開します．
+
+   ```sh
+   cargo publish --workspace
+   ```
+
+   Cargo 1.90 以降は workspace のパッケージを依存順に公開します．レジストリへの反映待ちで処理が途切れた場合は，各版が取得できるようになってから再実行します．
+5. `v0.1.0` のような版タグを作成して push します．
+6. そのタグから GitHub release を作成し，対応する CHANGELOG の節をリリースノートに使います．
+
 ## ベンチマーク
 
 `bench/` では，Scapy と最小限の Rust の比較対象（`bench/rsbench`．`pcap-file` と `etherparse` で作った試作）を同じ処理で比べます．処理は，全パケットを読み，IPv4 のバイト数を 5 タプルごとに足し合わせるものです．`rsbench --engine packet-tools` は同じ処理を `packet_tools::capture` と `packet_tools::dissect` で行います．既定は `--engine etherparse` です．詳しい手順は [`bench/README.ja.md`](../bench/README.ja.md) にあります．要点は次のとおりです．

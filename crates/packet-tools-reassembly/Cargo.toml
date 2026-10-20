@@ -6,15 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Reassembles IPv4 and IPv6 fragments and reconstructs policy-aware TCP byte streams."
+readme = "README.md"
+keywords = ["tcp", "ip", "reassembly", "network", "forensics"]
+categories = ["network-programming", "algorithms"]
+exclude = ["tests/"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
 ahash.workspace = true
-packet-tools-capture = { path = "../packet-tools-capture" }
-packet-tools-dissect = { path = "../packet-tools-dissect" }
-packet-tools-flow = { path = "../packet-tools-flow" }
+packet-tools-capture.workspace = true
+packet-tools-dissect.workspace = true
+packet-tools-flow.workspace = true
 
 [dev-dependencies]
 serde.workspace = true

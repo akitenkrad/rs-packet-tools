@@ -1,4 +1,23 @@
 //! IPv4/IPv6 fragment reassembly and TCP stream reconstruction.
+//!
+//! [`Defragmenter`] rebuilds datagrams from decoded packets, and [`TcpReassembler`] emits
+//! directional [`TcpItem`] values from TCP traffic. [`IpPolicy`] and [`TcpPolicy`] make overlap
+//! handling explicit; the lower-level [`FragmentBuffer`] and [`TcpSegmentBuffer`] expose the same
+//! policy behavior directly.
+//!
+//! # Example
+//!
+//! ```
+//! use packet_tools_reassembly::{FragmentBuffer, IpPolicy};
+//!
+//! let mut fragments = FragmentBuffer::new(IpPolicy::Bsd);
+//! assert!(fragments.insert(0, true, b"hello ", 0).complete.is_none());
+//! let datagram = fragments.insert(6, false, b"world", 1).complete.unwrap();
+//! assert_eq!(datagram, b"hello world");
+//! ```
+//!
+//! Most applications can access this crate through `packet_tools::reassembly` in the
+//! `packet-tools` facade crate.
 
 use std::{
     collections::{BTreeMap, HashSet},

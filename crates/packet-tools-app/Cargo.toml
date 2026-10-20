@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Parses DNS, HTTP, TLS, FTP, SSH, SMTP, and Telnet events from reassembled traffic."
+readme = "README.md"
+keywords = ["protocol", "network", "parser", "tls", "dns"]
+categories = ["network-programming", "parser-implementations"]
 
 [lib]
 path = "src/lib.rs"
@@ -13,5 +17,5 @@ path = "src/lib.rs"
 [dependencies]
 httparse.workspace = true
 md-5.workspace = true
-packet-tools-reassembly = { path = "../packet-tools-reassembly" }
+packet-tools-reassembly.workspace = true
 sha2.workspace = true

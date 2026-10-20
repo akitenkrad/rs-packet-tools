@@ -33,6 +33,12 @@ memmap2 = "0.9.8"
 parquet = { version = "60.0.0", default-features = false, features = ["arrow", "snap"] }
 pcap-file = "2.0.0"
 pcap-parser = "0.17.0"
+packet-tools-capture = { path = "crates/packet-tools-capture", version = "0.1.0" }
+packet-tools-dissect = { path = "crates/packet-tools-dissect", version = "0.1.0" }
+packet-tools-flow = { path = "crates/packet-tools-flow", version = "0.1.0" }
+packet-tools-reassembly = { path = "crates/packet-tools-reassembly", version = "0.1.0" }
+packet-tools-app = { path = "crates/packet-tools-app", version = "0.1.0" }
+packet-tools-export = { path = "crates/packet-tools-export", version = "0.1.0" }
 proptest = "1.9.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

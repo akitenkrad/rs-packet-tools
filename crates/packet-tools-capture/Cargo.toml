@@ -6,6 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Reads PCAP, pcapng, and gzip-compressed packet captures with streaming and memory-mapped inputs."
+readme = "README.md"
+keywords = ["pcap", "pcapng", "packet-capture", "network", "forensics"]
+categories = ["network-programming", "parser-implementations", "encoding"]
+exclude = ["tests/"]
 
 [lib]
 path = "src/lib.rs"

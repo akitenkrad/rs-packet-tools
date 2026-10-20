@@ -1,4 +1,26 @@
 //! PCAP, pcapng, and gzip input with magic-number format detection independent of file names.
+//!
+//! [`Capture`] opens a file or byte stream and lends each [`PacketRecord`] without copying its
+//! payload. [`OpenOptions`] can enable memory mapping for uncompressed files, while
+//! [`CaptureStats`] describes the records observed so far.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use packet_tools_capture::{Capture, CaptureError};
+//!
+//! fn main() -> Result<(), CaptureError> {
+//!     let mut capture = Capture::open("capture.pcapng")?;
+//!     while let Some(record) = capture.next_record() {
+//!         let record = record?;
+//!         println!("{}: {} bytes", record.index, record.data.len());
+//!     }
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Most applications can access this crate through `packet_tools::capture` in the `packet-tools`
+//! facade crate.
 
 mod input;
 mod types;

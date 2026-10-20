@@ -6,12 +6,17 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Provides zero-copy L2-L4 packet decoding with typed protocol views."
+readme = "README.md"
+keywords = ["packet", "protocol", "network", "parser", "zero-copy"]
+categories = ["network-programming", "parser-implementations"]
+exclude = ["tests/"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-packet-tools-capture = { path = "../packet-tools-capture" }
+packet-tools-capture.workspace = true
 
 [dev-dependencies]
 etherparse.workspace = true

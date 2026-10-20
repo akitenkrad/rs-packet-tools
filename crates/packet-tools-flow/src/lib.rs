@@ -2,6 +2,34 @@
 //!
 //! [`FlowTable`] accepts decoded packets in capture order. The compatibility policies use
 //! microsecond timestamps, as CICFlowMeter does; [`Policy::IdleOnly`] retains nanoseconds.
+//! [`FlowConfig`] selects one of the supported policies and either the stable minimal counters or
+//! the CICFlowMeter-compatible feature columns.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use packet_tools_capture::{Capture, CaptureError};
+//! use packet_tools_dissect::{decode, DecodeDepth};
+//! use packet_tools_flow::{FlowConfig, FlowTable};
+//!
+//! fn main() -> Result<(), CaptureError> {
+//!     let mut capture = Capture::open("capture.pcap")?;
+//!     let mut table = FlowTable::new(FlowConfig::default());
+//!     while let Some(record) = capture.next_record() {
+//!         let record = record?;
+//!         let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+//!         for flow in table.push(&record, &packet) {
+//!             println!("{}", flow.flow_uid);
+//!         }
+//!     }
+//!     let remaining = table.finish();
+//!     println!("{} final flows", remaining.len());
+//!     Ok(())
+//! }
+//! ```
+//!
+//! Most applications can access this crate through `packet_tools::flow` in the `packet-tools`
+//! facade crate.
 
 use std::{
     collections::{BTreeSet, HashMap},

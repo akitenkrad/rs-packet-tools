@@ -6,10 +6,15 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Builds bidirectional packet flows and computes CICFlowMeter-compatible features."
+readme = "README.md"
+keywords = ["network-flow", "cicflowmeter", "traffic", "ids", "pcap"]
+categories = ["network-programming", "algorithms"]
+exclude = ["tests/"]
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-packet-tools-capture = { path = "../packet-tools-capture" }
-packet-tools-dissect = { path = "../packet-tools-dissect" }
+packet-tools-capture.workspace = true
+packet-tools-dissect.workspace = true

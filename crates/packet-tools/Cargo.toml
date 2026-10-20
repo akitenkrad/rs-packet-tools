@@ -6,15 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Provides a unified library facade and command-line tools for packet capture analysis."
+readme = "../../README.md"
+keywords = ["pcap", "packet", "network", "forensics", "cli"]
+categories = ["network-programming", "command-line-utilities", "parser-implementations"]
+exclude = ["tests/"]
 
 [dependencies]
 clap.workspace = true
-packet-tools-app = { path = "../packet-tools-app" }
-packet-tools-capture = { path = "../packet-tools-capture" }
-packet-tools-dissect = { path = "../packet-tools-dissect" }
-packet-tools-export = { path = "../packet-tools-export" }
-packet-tools-flow = { path = "../packet-tools-flow" }
-packet-tools-reassembly = { path = "../packet-tools-reassembly" }
+packet-tools-app.workspace = true
+packet-tools-capture.workspace = true
+packet-tools-dissect.workspace = true
+packet-tools-export.workspace = true
+packet-tools-flow.workspace = true
+packet-tools-reassembly.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 

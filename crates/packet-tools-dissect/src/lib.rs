@@ -1,4 +1,22 @@
 //! Zero-copy L2-L4 packet views backed by a fixed-size layer index.
+//!
+//! [`decode`] creates a [`Packet`] whose typed views, such as [`Ipv4View`] and [`TcpView`], borrow
+//! directly from the captured bytes. [`DecodeDepth`] controls how far decoding proceeds, and
+//! malformed input is reported on the packet instead of requiring allocation.
+//!
+//! # Example
+//!
+//! ```
+//! use packet_tools_capture::LinkType;
+//! use packet_tools_dissect::{decode, DecodeDepth, Ipv4View};
+//!
+//! let frame = [0_u8; 14];
+//! let packet = decode(&frame, LinkType(1), DecodeDepth::L4);
+//! assert!(packet.layer::<Ipv4View>().is_none());
+//! ```
+//!
+//! Most applications can access this crate through `packet_tools::dissect` in the `packet-tools`
+//! facade crate.
 
 mod views;
 

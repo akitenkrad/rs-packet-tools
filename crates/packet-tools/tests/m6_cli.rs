@@ -6,6 +6,101 @@ use std::{
 };
 
 #[test]
+fn every_subcommand_help_describes_all_arguments() {
+    let cases = [
+        ("validate", &["Capture files to validate"][..]),
+        (
+            "packets",
+            &[
+                "Input captures",
+                "Output file, or output directory for multiple inputs",
+            ][..],
+        ),
+        (
+            "flows",
+            &[
+                "Input captures",
+                "Output file, or output directory for multiple inputs",
+            ][..],
+        ),
+        (
+            "streams",
+            &[
+                "Input captures",
+                "IP fragment overlap resolution policy",
+                "TCP segment overlap resolution policy",
+                "When to deliver reassembled TCP bytes",
+                "IP fragment reassembly timeout in seconds",
+                "TCP connection inactivity timeout in seconds",
+                "Maximum retained TCP reassembly memory per direction in bytes",
+                "Maximum retained reassembly memory in bytes",
+                "Include the outermost VLAN identifier in reassembly keys",
+                "Event table output file; unavailable with multiple inputs",
+                "Datagram table output file; unavailable with multiple inputs",
+                "Directory for delivered TCP bytes; unavailable with multiple inputs",
+                "Output format; inferred from .parquet or .csv when omitted",
+                "Number of capture files to process concurrently",
+                "Output file, or output directory for multiple inputs",
+            ][..],
+        ),
+        (
+            "app",
+            &[
+                "Input captures",
+                "IP fragment overlap resolution policy",
+                "TCP segment overlap resolution policy",
+                "When to deliver reassembled TCP bytes",
+                "Maximum retained reassembly memory in bytes",
+                "Maximum application probe and parser buffer memory in bytes",
+                "Comma-separated application protocols to parse",
+                "Output table format",
+                "Number of capture files to process concurrently",
+                "Output directory, or parent output directory for multiple inputs",
+            ][..],
+        ),
+    ];
+
+    for (subcommand, descriptions) in cases {
+        let output = command().args([subcommand, "--help"]).output().unwrap();
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        for description in descriptions {
+            assert!(
+                stdout.contains(description),
+                "{subcommand} help is missing: {description}\n{stdout}"
+            );
+        }
+    }
+}
+
+#[test]
+fn reassembly_policy_help_lists_every_accepted_spelling() {
+    for subcommand in ["streams", "app"] {
+        let output = command().args([subcommand, "--help"]).output().unwrap();
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(stdout.contains("possible values: first, last, bsd, linux, windows, solaris"));
+        assert!(stdout.contains(
+            "possible values: first, vista, last, bsd, windows, macos, hpux10, irix, linux, old-linux, old_linux, solaris, hpux11"
+        ));
+    }
+}
+
+#[test]
+fn invalid_reassembly_policy_is_rejected_by_clap() {
+    for (subcommand, flag) in [("streams", "--ip-policy"), ("app", "--tcp-policy")] {
+        let output = command()
+            .args([subcommand, flag, "bogus", "-o", "unused", "unused.pcap"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("invalid value 'bogus'"), "{stderr}");
+        assert!(stderr.contains("possible values:"), "{stderr}");
+    }
+}
+
+#[test]
 fn packets_flow_uid_matches_emitted_flow_packet_counts_for_every_policy() {
     for policy in ["corrected", "cicflowmeter", "idle-only"] {
         let directory = tempfile::tempdir().unwrap();

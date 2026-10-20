@@ -3,6 +3,8 @@
 # CLI
 
 ```text
+High-performance packet analysis tools
+
 Usage: packet-tools <COMMAND>
 
 Commands:
@@ -33,6 +35,8 @@ Each directory contains `packets.<ext>`, `flows.<ext>`, all three of `streams.<e
 Reads every record of one or more captures and prints a summary per file. It checks that a capture can be read to the end, and it reports what the file contains. It does not dissect packets.
 
 ```text
+Validate capture containers and summarize their records
+
 Usage: packet-tools validate [OPTIONS] <FILES>...
 
 Arguments:
@@ -74,6 +78,8 @@ The exit status is 1 if any file fails to read or ends in the middle of a record
 Writes one row per packet, with the L2–L4 header fields, to Parquet or CSV.
 
 ```text
+Export one row per packet to Parquet or CSV
+
 Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
@@ -148,6 +154,8 @@ The exit status is 1 if the capture cannot be read to the end. Rows read before 
 Builds bidirectional flows in capture order and writes CSV or Snappy-compressed Parquet.
 
 ```text
+Build bidirectional flows and export one row per completed flow
+
 Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
@@ -212,27 +220,44 @@ and complete flows available before a capture error are written before exit stat
 Reassembles IPv4/IPv6 fragments, decodes completed raw-IP datagrams, and reconstructs each TCP direction.
 
 ```text
+Reassemble IP fragments and directional TCP byte streams
+
 Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUTS>...
+  <INPUTS>...  Input captures
 
 Options:
-      --ip-policy <IP_POLICY>            [default: bsd]
-      --tcp-policy <TCP_POLICY>          [default: bsd]
-      --delivery <DELIVERY>              [default: on-ack] [possible values: on-ack, immediate]
-      --defrag-timeout <DEFRAG_TIMEOUT>  [default: 60]
-      --tcp-timeout <TCP_TIMEOUT>        [default: 3600]
-      --stream-memory <STREAM_MEMORY>    [default: 4194304]
-      --memory <MEMORY>                  [default: 1073741824]
+      --ip-policy <IP_POLICY>
+          IP fragment overlap resolution policy [default: bsd] [possible values: first, last, bsd, linux, windows, solaris]
+      --tcp-policy <TCP_POLICY>
+          TCP segment overlap resolution policy [default: bsd] [possible values: first, vista, last, bsd, windows, macos, hpux10, irix, linux, old-linux, old_linux, solaris, hpux11]
+      --delivery <DELIVERY>
+          When to deliver reassembled TCP bytes [default: on-ack] [possible values: on-ack, immediate]
+      --defrag-timeout <DEFRAG_TIMEOUT>
+          IP fragment reassembly timeout in seconds [default: 60]
+      --tcp-timeout <TCP_TIMEOUT>
+          TCP connection inactivity timeout in seconds [default: 3600]
+      --stream-memory <STREAM_MEMORY>
+          Maximum retained TCP reassembly memory per direction in bytes [default: 4194304]
+      --memory <MEMORY>
+          Maximum retained reassembly memory in bytes [default: 1073741824]
       --vlan-in-key
+          Include the outermost VLAN identifier in reassembly keys
       --events <EVENTS>
+          Event table output file; unavailable with multiple inputs
       --datagrams <DATAGRAMS>
+          Datagram table output file; unavailable with multiple inputs
       --dump-dir <DUMP_DIR>
-      --format <FORMAT>                  [possible values: parquet, csv]
-      --jobs <JOBS>                      [default: 1]
+          Directory for delivered TCP bytes; unavailable with multiple inputs
+      --format <FORMAT>
+          Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --jobs <JOBS>
+          Number of capture files to process concurrently [default: 1]
   -o, --output <OUTPUT>
-  -h, --help                             Print help
+          Output file, or output directory for multiple inputs
+  -h, --help
+          Print help
 ```
 
 `--defrag-timeout` and `--tcp-timeout` are in seconds, and `--stream-memory` and `--memory` are in bytes. `-o` names the stream table; `--events` and `--datagrams` name the optional event and datagram tables, and `--dump-dir` a directory for the delivered bytes.
@@ -244,7 +269,7 @@ packet-tools streams --tcp-policy linux --events overlap.csv --datagrams datagra
 
 IP policies are `first`, `last`, `bsd`, `linux`, `windows`, and `solaris`. `first` always retains existing bytes and `last` always uses new bytes. `bsd` uses a new fragment when it starts before the existing fragment. `linux` also uses it when both start at the same offset. `windows` requires the new fragment to start before and end after the existing fragment; `solaris` accepts an equal end.
 
-TCP policies are `first`, `last`, `bsd`, `linux`, `old-linux`, and `solaris`. Aliases are `vista` for `first`; `windows`, `macos`, `hpux10`, and `irix` for `bsd`; and `hpux11` for `solaris`. Existing bytes are retained by default. A new segment starting before an existing segment wins for `bsd`, `linux`, and `old-linux`; `solaris` also requires it to reach the existing end. At the same start, `linux` replaces only when the new segment extends farther, while `old-linux` and `solaris` also replace equal-length data. Starting inside an existing segment replaces data only under `solaris`, and only when the new segment extends past the existing end. `last` always replaces existing data.
+TCP policies are `first`, `last`, `bsd`, `linux`, `old-linux`, and `solaris`. Aliases are `vista` for `first`; `windows`, `macos`, `hpux10`, and `irix` for `bsd`; `old_linux` for `old-linux`; and `hpux11` for `solaris`. Names are case-insensitive. Existing bytes are retained by default. A new segment starting before an existing segment wins for `bsd`, `linux`, and `old-linux`; `solaris` also requires it to reach the existing end. At the same start, `linux` replaces only when the new segment extends farther, while `old-linux` and `solaris` also replace equal-length data. Starting inside an existing segment replaces data only under `solaris`, and only when the new segment extends past the existing end. `last` always replaces existing data.
 
 `on-ack` delays delivery until the peer acknowledges the bytes, allowing overlaps received first to be resolved by policy. `immediate` delivers a contiguous prefix as soon as it arrives. Bytes already delivered never change; a later conflicting overlap becomes `tcp_late_overlap_conflict`. A zero- or one-byte segment at exactly one sequence number before the next expected byte, without SYN, FIN or RST, is counted as a keepalive and is neither buffered nor reported as an overlap. FIN completion, accepted RST, timeout, and capture end flush remaining ranges, emitting gaps where bytes are absent.
 
@@ -261,21 +286,23 @@ The event table records `ip_overlap`, `ip_overlap_conflict`, `ip_timeout`, `ip_t
 Reassembles IP fragments and TCP streams, parses application events, and writes one table per selected protocol.
 
 ```text
+Parse reassembled streams and UDP datagrams into application-layer tables
+
 Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUTS>...
+  <INPUTS>...  Input captures
 
 Options:
-      --ip-policy <IP_POLICY>    [default: bsd]
-      --tcp-policy <TCP_POLICY>  [default: bsd]
-      --delivery <DELIVERY>      [default: on-ack] [possible values: on-ack, immediate]
-      --memory <MEMORY>          Maximum retained TCP reassembly memory in bytes [default: 1073741824]
+      --ip-policy <IP_POLICY>    IP fragment overlap resolution policy [default: bsd] [possible values: first, last, bsd, linux, windows, solaris]
+      --tcp-policy <TCP_POLICY>  TCP segment overlap resolution policy [default: bsd] [possible values: first, vista, last, bsd, windows, macos, hpux10, irix, linux, old-linux, old_linux, solaris, hpux11]
+      --delivery <DELIVERY>      When to deliver reassembled TCP bytes [default: on-ack] [possible values: on-ack, immediate]
+      --memory <MEMORY>          Maximum retained reassembly memory in bytes [default: 1073741824]
       --app-memory <APP_MEMORY>  Maximum application probe and parser buffer memory in bytes [default: 268435456]
-      --protocols <PROTOCOLS>    [default: dns,http,tls,ftp,ssh,smtp,telnet]
-      --format <FORMAT>          [default: parquet] [possible values: parquet, csv]
-      --jobs <JOBS>              [default: 1]
-  -o, --output <OUTPUT>
+      --protocols <PROTOCOLS>    Comma-separated application protocols to parse [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>          Output table format [default: parquet] [possible values: parquet, csv]
+      --jobs <JOBS>              Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>          Output directory, or parent output directory for multiple inputs
   -h, --help                     Print help
 ```
 

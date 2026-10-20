@@ -75,6 +75,45 @@ fn streams_accepts_all_documented_policy_delivery_and_limit_options() {
     );
 }
 
+#[test]
+fn streams_preserves_policy_aliases_and_normalized_spellings() {
+    for (index, tcp_policy) in [
+        "vista",
+        "windows",
+        "macos",
+        "hpux10",
+        "irix",
+        "hpux11",
+        "old_linux",
+        "OLD-LINUX",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let directory = tempfile::tempdir().unwrap();
+        let result = command()
+            .args([
+                "streams",
+                "--ip-policy",
+                "BSD",
+                "--tcp-policy",
+                tcp_policy,
+                "--format",
+                "csv",
+                "-o",
+            ])
+            .arg(directory.path().join(format!("streams-{index}.csv")))
+            .arg(fixture("le_usec.pcap"))
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{tcp_policy}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+}
+
 #[derive(Deserialize)]
 struct TcpVectors {
     cases: Vec<TcpCase>,

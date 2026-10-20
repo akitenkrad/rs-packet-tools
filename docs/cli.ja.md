@@ -3,6 +3,8 @@
 # CLI
 
 ```text
+High-performance packet analysis tools
+
 Usage: packet-tools <COMMAND>
 
 Commands:
@@ -33,6 +35,8 @@ Options:
 1 つ以上のキャプチャを最後まで読み，ファイルごとの要約を出します．キャプチャを最後まで読めるかを確かめ，ファイルの中身を報告するためのコマンドです．パケットの解析はしません．
 
 ```text
+Validate capture containers and summarize their records
+
 Usage: packet-tools validate [OPTIONS] <FILES>...
 
 Arguments:
@@ -74,6 +78,8 @@ total files=2 packets=41 regressions=2
 パケットごとに 1 行，L2〜L4 のヘッダの項目を Parquet か CSV に書き出します．
 
 ```text
+Export one row per packet to Parquet or CSV
+
 Usage: packet-tools packets [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
@@ -148,6 +154,8 @@ Parquet は Snappy で圧縮します．CSV では，値が無いところは空
 キャプチャの順に双方向フローを組み立て，CSV または Snappy 圧縮の Parquet に書き出します．
 
 ```text
+Build bidirectional flows and export one row per completed flow
+
 Usage: packet-tools flows [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
@@ -198,27 +206,44 @@ minimal プリセットは 21 列です．互換プリセットは packet-tools 
 IPv4／IPv6 フラグメントを再び組み立て，完成した raw IP を解析してから，TCP の各方向を再構成します．
 
 ```text
+Reassemble IP fragments and directional TCP byte streams
+
 Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUTS>...
+  <INPUTS>...  Input captures
 
 Options:
-      --ip-policy <IP_POLICY>            [default: bsd]
-      --tcp-policy <TCP_POLICY>          [default: bsd]
-      --delivery <DELIVERY>              [default: on-ack] [possible values: on-ack, immediate]
-      --defrag-timeout <DEFRAG_TIMEOUT>  [default: 60]
-      --tcp-timeout <TCP_TIMEOUT>        [default: 3600]
-      --stream-memory <STREAM_MEMORY>    [default: 4194304]
-      --memory <MEMORY>                  [default: 1073741824]
+      --ip-policy <IP_POLICY>
+          IP fragment overlap resolution policy [default: bsd] [possible values: first, last, bsd, linux, windows, solaris]
+      --tcp-policy <TCP_POLICY>
+          TCP segment overlap resolution policy [default: bsd] [possible values: first, vista, last, bsd, windows, macos, hpux10, irix, linux, old-linux, old_linux, solaris, hpux11]
+      --delivery <DELIVERY>
+          When to deliver reassembled TCP bytes [default: on-ack] [possible values: on-ack, immediate]
+      --defrag-timeout <DEFRAG_TIMEOUT>
+          IP fragment reassembly timeout in seconds [default: 60]
+      --tcp-timeout <TCP_TIMEOUT>
+          TCP connection inactivity timeout in seconds [default: 3600]
+      --stream-memory <STREAM_MEMORY>
+          Maximum retained TCP reassembly memory per direction in bytes [default: 4194304]
+      --memory <MEMORY>
+          Maximum retained reassembly memory in bytes [default: 1073741824]
       --vlan-in-key
+          Include the outermost VLAN identifier in reassembly keys
       --events <EVENTS>
+          Event table output file; unavailable with multiple inputs
       --datagrams <DATAGRAMS>
+          Datagram table output file; unavailable with multiple inputs
       --dump-dir <DUMP_DIR>
-      --format <FORMAT>                  [possible values: parquet, csv]
-      --jobs <JOBS>                      [default: 1]
+          Directory for delivered TCP bytes; unavailable with multiple inputs
+      --format <FORMAT>
+          Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --jobs <JOBS>
+          Number of capture files to process concurrently [default: 1]
   -o, --output <OUTPUT>
-  -h, --help                             Print help
+          Output file, or output directory for multiple inputs
+  -h, --help
+          Print help
 ```
 
 `--defrag-timeout` と `--tcp-timeout` は秒，`--stream-memory` と `--memory` はバイト単位です．`-o` はストリーム表の出力先です．`--events` と `--datagrams` は省略可能な事象表とデータグラム表の出力先，`--dump-dir` は配送したバイト列を保存するディレクトリです．
@@ -230,7 +255,7 @@ packet-tools streams --tcp-policy linux --events overlap.csv --datagrams datagra
 
 IP 方針は `first`，`last`，`bsd`，`linux`，`windows`，`solaris` です．`first` は常に既存を残し，`last` は常に新しい断片を使います．`bsd` は新しい断片が既存より前から始まるときに新しい側を使い，`linux` は同じ位置から始まる場合も新しい側を使います．`windows` は新しい断片が既存より前から始まり，かつ既存の終端より先まで続く場合に使います．`solaris` は終端が同じ場合も新しい側を使います．
 
-TCP 方針は `first`，`last`，`bsd`，`linux`，`old-linux`，`solaris` です．別名は，`vista` が `first`，`windows`，`macos`，`hpux10`，`irix` が `bsd`，`hpux11` が `solaris` です．既定では既存を残し，`last` だけは常に新しい側を使います．新しいセグメントが既存より前から始まる場合，`bsd`，`linux`，`old-linux` は新しい側を使い，`solaris` はさらに既存の終端以上まで続く場合に使います．開始位置が同じ場合，`linux` は既存より先まで続く場合，`old-linux` と `solaris` は終端が同じ場合も新しい側を使います．既存の途中から始まる場合は，`solaris` だけが，既存の終端より先まで続く新しい側を使います．
+TCP 方針は `first`，`last`，`bsd`，`linux`，`old-linux`，`solaris` です．別名は，`vista` が `first`，`windows`，`macos`，`hpux10`，`irix` が `bsd`，`old_linux` が `old-linux`，`hpux11` が `solaris` です．名前の大文字と小文字は区別しません．既定では既存を残し，`last` だけは常に新しい側を使います．新しいセグメントが既存より前から始まる場合，`bsd`，`linux`，`old-linux` は新しい側を使い，`solaris` はさらに既存の終端以上まで続く場合に使います．開始位置が同じ場合，`linux` は既存より先まで続く場合，`old-linux` と `solaris` は終端が同じ場合も新しい側を使います．既存の途中から始まる場合は，`solaris` だけが，既存の終端より先まで続く新しい側を使います．
 
 `on-ack` は相手が ACK した位置まで配送を待つため，配送前に届いた重なりへ方針を適用できます．`immediate` は連続した prefix がそろった時点で配送します．配送済みのバイトは変更せず，あとから内容の異なる重なりが来た場合は `tcp_late_overlap_conflict` を記録します．SYN，FIN，RST がなく，payload が 0 または 1 バイトで，sequence number が次に期待するバイトの 1 つ前にある segment は keepalive として数え，buffer へ入れず，重なりとしても扱いません．FIN の完了，受理した RST，timeout，capture の終端では残りを配送し，届いていない範囲を gap として渡します．
 
@@ -247,21 +272,23 @@ IP 断片と TCP payload は，重ならない区間として保持します．`
 IP フラグメントと TCP ストリームを再構成し，アプリ層の事象を解析して，選んだプロトコルごとの表へ書き出します．
 
 ```text
+Parse reassembled streams and UDP datagrams into application-layer tables
+
 Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
 Arguments:
-  <INPUTS>...
+  <INPUTS>...  Input captures
 
 Options:
-      --ip-policy <IP_POLICY>    [default: bsd]
-      --tcp-policy <TCP_POLICY>  [default: bsd]
-      --delivery <DELIVERY>      [default: on-ack] [possible values: on-ack, immediate]
-      --memory <MEMORY>          Maximum retained TCP reassembly memory in bytes [default: 1073741824]
+      --ip-policy <IP_POLICY>    IP fragment overlap resolution policy [default: bsd] [possible values: first, last, bsd, linux, windows, solaris]
+      --tcp-policy <TCP_POLICY>  TCP segment overlap resolution policy [default: bsd] [possible values: first, vista, last, bsd, windows, macos, hpux10, irix, linux, old-linux, old_linux, solaris, hpux11]
+      --delivery <DELIVERY>      When to deliver reassembled TCP bytes [default: on-ack] [possible values: on-ack, immediate]
+      --memory <MEMORY>          Maximum retained reassembly memory in bytes [default: 1073741824]
       --app-memory <APP_MEMORY>  Maximum application probe and parser buffer memory in bytes [default: 268435456]
-      --protocols <PROTOCOLS>    [default: dns,http,tls,ftp,ssh,smtp,telnet]
-      --format <FORMAT>          [default: parquet] [possible values: parquet, csv]
-      --jobs <JOBS>              [default: 1]
-  -o, --output <OUTPUT>
+      --protocols <PROTOCOLS>    Comma-separated application protocols to parse [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>          Output table format [default: parquet] [possible values: parquet, csv]
+      --jobs <JOBS>              Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>          Output directory, or parent output directory for multiple inputs
   -h, --help                     Print help
 ```
 

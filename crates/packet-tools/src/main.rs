@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum, builder::PossibleValuesParser};
 use packet_tools_app::{
     AppAnalyzer, AppChunk, AppOutput, AppParser, ByteSource, Confidence, DispatchRow, DnsParser,
     FlowCtx, Protocol, Transport,
@@ -34,6 +34,23 @@ use packet_tools_reassembly::{
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
+
+const IP_POLICY_VALUES: [&str; 6] = ["first", "last", "bsd", "linux", "windows", "solaris"];
+const TCP_POLICY_VALUES: [&str; 13] = [
+    "first",
+    "vista",
+    "last",
+    "bsd",
+    "windows",
+    "macos",
+    "hpux10",
+    "irix",
+    "linux",
+    "old-linux",
+    "old_linux",
+    "solaris",
+    "hpux11",
+];
 
 #[derive(Parser)]
 #[command(version, about = "High-performance packet analysis tools")]
@@ -152,34 +169,59 @@ struct FlowsArgs {
 
 #[derive(Args, Clone)]
 struct StreamsArgs {
-    #[arg(long, default_value = "bsd")]
+    /// IP fragment overlap resolution policy.
+    #[arg(
+        long,
+        default_value = "bsd",
+        ignore_case = true,
+        value_parser = PossibleValuesParser::new(IP_POLICY_VALUES)
+    )]
     ip_policy: String,
-    #[arg(long, default_value = "bsd")]
+    /// TCP segment overlap resolution policy.
+    #[arg(
+        long,
+        default_value = "bsd",
+        ignore_case = true,
+        value_parser = PossibleValuesParser::new(TCP_POLICY_VALUES)
+    )]
     tcp_policy: String,
+    /// When to deliver reassembled TCP bytes.
     #[arg(long, value_enum, default_value = "on-ack")]
     delivery: StreamDelivery,
+    /// IP fragment reassembly timeout in seconds.
     #[arg(long, default_value = "60", value_parser = parse_seconds)]
     defrag_timeout: f64,
+    /// TCP connection inactivity timeout in seconds.
     #[arg(long, default_value = "3600", value_parser = parse_seconds)]
     tcp_timeout: f64,
+    /// Maximum retained TCP reassembly memory per direction in bytes.
     #[arg(long, default_value = "4194304")]
     stream_memory: usize,
+    /// Maximum retained reassembly memory in bytes.
     #[arg(long, default_value = "1073741824")]
     memory: usize,
+    /// Include the outermost VLAN identifier in reassembly keys.
     #[arg(long)]
     vlan_in_key: bool,
+    /// Event table output file; unavailable with multiple inputs.
     #[arg(long)]
     events: Option<PathBuf>,
+    /// Datagram table output file; unavailable with multiple inputs.
     #[arg(long)]
     datagrams: Option<PathBuf>,
+    /// Directory for delivered TCP bytes; unavailable with multiple inputs.
     #[arg(long)]
     dump_dir: Option<PathBuf>,
+    /// Output format; inferred from .parquet or .csv when omitted.
     #[arg(long, value_enum)]
     format: Option<OutputFormat>,
+    /// Number of capture files to process concurrently.
     #[arg(long, default_value = "1", value_parser = parse_jobs)]
     jobs: usize,
+    /// Output file, or output directory for multiple inputs.
     #[arg(short = 'o', long)]
     output: PathBuf,
+    /// Input captures.
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
     #[arg(skip)]
@@ -188,26 +230,44 @@ struct StreamsArgs {
 
 #[derive(Args, Clone)]
 struct AppArgs {
-    #[arg(long, default_value = "bsd")]
+    /// IP fragment overlap resolution policy.
+    #[arg(
+        long,
+        default_value = "bsd",
+        ignore_case = true,
+        value_parser = PossibleValuesParser::new(IP_POLICY_VALUES)
+    )]
     ip_policy: String,
-    #[arg(long, default_value = "bsd")]
+    /// TCP segment overlap resolution policy.
+    #[arg(
+        long,
+        default_value = "bsd",
+        ignore_case = true,
+        value_parser = PossibleValuesParser::new(TCP_POLICY_VALUES)
+    )]
     tcp_policy: String,
+    /// When to deliver reassembled TCP bytes.
     #[arg(long, value_enum, default_value = "on-ack")]
     delivery: StreamDelivery,
-    /// Maximum retained TCP reassembly memory in bytes.
+    /// Maximum retained reassembly memory in bytes.
     #[arg(long, default_value = "1073741824")]
     memory: usize,
     /// Maximum application probe and parser buffer memory in bytes.
     #[arg(long, default_value = "268435456")]
     app_memory: usize,
+    /// Comma-separated application protocols to parse.
     #[arg(long, default_value = "dns,http,tls,ftp,ssh,smtp,telnet")]
     protocols: String,
+    /// Output table format.
     #[arg(long, value_enum, default_value = "parquet")]
     format: OutputFormat,
+    /// Number of capture files to process concurrently.
     #[arg(long, default_value = "1", value_parser = parse_jobs)]
     jobs: usize,
+    /// Output directory, or parent output directory for multiple inputs.
     #[arg(short = 'o', long)]
     output: PathBuf,
+    /// Input captures.
     #[arg(required = true)]
     inputs: Vec<PathBuf>,
     #[arg(skip)]

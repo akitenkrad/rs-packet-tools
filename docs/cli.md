@@ -30,6 +30,12 @@ Each directory contains `packets.<ext>`, `flows.<ext>`, all three of `streams.<e
 
 `--memory`, `--app-memory`, and `--stream-memory` are limits per job. Approximate total memory can therefore be up to `N` times the selected per-job limits with `--jobs N`. Measured speed-ups and memory use are listed in [Performance](performance.md#file-level-parallelism).
 
+## Reading Parquet output
+
+Parquet files are written with the Rust `parquet` crate 60. For every `Float32` or `Float64` column it declares the IEEE 754 total order in the file metadata, a column order added in recent versions of the Parquet format. Readers that predate it cannot parse the file. In practice this affects the `flows` table, whose statistics columns are `Float64`.
+
+Use polars 2.0 or later to read these files. polars 1.x (checked with 1.20, 1.30 and 1.34) fails with `File out of specification: Invalid thrift: bad data`. pandas, pyarrow 15 or later, and DuckDB 0.10 or later read them. If you must stay on polars 1.x, write the table with `--format csv`.
+
 ## `validate`
 
 Reads every record of one or more captures and prints a summary per file. It checks that a capture can be read to the end, and it reports what the file contains. It does not dissect packets.

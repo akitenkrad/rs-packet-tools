@@ -4,6 +4,8 @@
 
 CSV と Parquet は同じ論理型を使います．件数とバイト数は整数，統計量は Float64 です．`--column-names original` を指定すると `flow_uid` と `end_reason` を除き，下表の «元の列名» を使います．CICFlowMeter の `Label` も出しません．元の列名に重複は無いため，Parquet 用の改名は不要です．
 
+Parquet の出力を polars で読むには 2.0 以降が必要です．[Parquet の出力を読む](cli.ja.md#parquet-の出力を読む)を参照してください．
+
 ## Minimal プリセット
 
 | 列 | 型 | 意味 |

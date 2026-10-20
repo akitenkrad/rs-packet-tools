@@ -7,6 +7,8 @@ Float64. `--column-names original` removes `flow_uid` and `end_reason`, uses the
 below, and also omits CICFlowMeter's `Label`. Original headers are unique, so Parquet needs no
 renaming rule.
 
+Parquet output needs polars 2.0 or later; see [Reading Parquet output](cli.md#reading-parquet-output).
+
 ## Minimal preset
 
 | Column | Type | Meaning |

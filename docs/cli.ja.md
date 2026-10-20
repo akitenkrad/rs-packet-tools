@@ -30,6 +30,12 @@ Options:
 
 `--memory`，`--app-memory`，`--stream-memory` はジョブごとの上限です．したがって `--jobs N` の全体では，選んだジョブ単位の上限のおよそ N 倍まで使うことがあります．計測した短縮率とメモリ使用量は[性能](performance.ja.md#ファイル単位の並列)にあります．
 
+## Parquet の出力を読む
+
+Parquet は Rust の `parquet` crate 60 で書き出します．この版は `Float32`・`Float64` の列ごとに，ファイルのメタデータへ IEEE 754 total order という列の並び順を書き込みます．Parquet 形式の最近の版で加わった項目なので，それより前の読み手はファイルを解析できません．実際に影響するのは，統計量の列が `Float64` の `flows` 表です．
+
+これらのファイルを読むときは polars 2.0 以降を使ってください．polars 1.x（1.20・1.30・1.34 で確認）は `File out of specification: Invalid thrift: bad data` で失敗します．pandas，pyarrow 15 以降，DuckDB 0.10 以降は読めます．polars 1.x を使い続ける必要があるときは，`--format csv` で書き出してください．
+
 ## `validate`
 
 1 つ以上のキャプチャを最後まで読み，ファイルごとの要約を出します．キャプチャを最後まで読めるかを確かめ，ファイルの中身を報告するためのコマンドです．パケットの解析はしません．

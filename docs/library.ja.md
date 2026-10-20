@@ -144,6 +144,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `TcpReassembler::push` には通常の解析済み TCP packet と，再び解析した完成データグラムのどちらも渡せます．出力の `TcpItem` は `Start`，`Data`，`Gap`，`PostClose`，`End` です．`StreamChunk` は接続 ID，方向，0 始まりの stream position，`Arc<[u8]>` に加え，元 packet の index と時刻を持つ source range を含みます．`source_at` で各バイトの元 packet を調べられます．既定は `DeliveryMode::OnAck` で，`Immediate` は連続した prefix をすぐに返します．TCP の payload は順序付きの範囲 map に保持します．分割した範囲は共有した segment allocation の部分範囲を参照するため，overlap の挿入では範囲列を作り直さず，影響しない payload もコピーしません．各 backing allocation には入力順の ID を与え，課金と区間の結合にアドレスを使いません．配送済みの payload は原則として捨てますが，遅れて届いた食い違う重なりを検出するため，各方向で直近 1 MiB まで（かつ `stream_memory` の半分以下）を残します．この履歴，共有 payload byte，論理的な区間 metadata は両方の memory 上限に算入し，現在値は `TcpReassembler::estimated_memory_bytes` で取得できます．`PostClose` は統計だけの通知です．受理した RST または双方の FIN が完了した後は，`TcpConfig::closing_timeout` の間，接続を墓石として残します．その間の SYN（ACK なし）以外の packet は数えますが，`Data` としては返しません．SYN（ACK なし）は墓石を置き換え，timeout 後の packet は新しい midstream 接続を開始できます．`next_expected - 1` にある 0 または 1 バイトの keepalive は `DirectionSummary::keepalives` に数え，buffer と重なり判定を通しません．capture の終端で `finish()` を呼びます．
 
+次のループは，`streams` と `app` コマンドと同じ方法で 2 つの段をつなぎます．フラグメントは `Defragmenter` にだけ渡し，完成したデータグラムは raw IP として decode してから，1 つの packet として `TcpReassembler` に渡します．
+
+```rust
+use packet_tools::capture::{Capture, LinkType, PacketRecord};
+use packet_tools::dissect::{decode, DecodeDepth, Ipv4View, Ipv6View};
+use packet_tools::reassembly::{DefragConfig, Defragmenter, TcpConfig, TcpItem, TcpReassembler};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut capture = Capture::open("capture.pcap")?;
+    let mut defrag = Defragmenter::new(DefragConfig::default());
+    let mut tcp = TcpReassembler::new(TcpConfig::default());
+    let mut items = Vec::new();
+    while let Some(record) = capture.next_record() {
+        let record = record?;
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        let fragmented = packet
+            .layer::<Ipv4View>()
+            .is_some_and(|ip| ip.more_fragments() || ip.fragment_offset() != 0)
+            || packet.layer::<Ipv6View>().is_some_and(|ip| ip.fragment().is_some());
+        let output = defrag.push(&record, &packet);
+        if !fragmented {
+            items.extend(tcp.push(&record, &packet).items);
+        }
+        // 完成したデータグラムは raw IP なので，decode して 1 つの packet として渡す．
+        for datagram in output.datagrams {
+            let len = datagram.bytes.len() as u32;
+            let synthetic = PacketRecord {
+                index: datagram.last_index,
+                ts_ns: Some(datagram.last_ts_ns),
+                caplen: len,
+                origlen: len,
+                linktype: LinkType(101),
+                interface: 0,
+                data: &datagram.bytes,
+            };
+            let decoded = decode(synthetic.data, synthetic.linktype, DecodeDepth::L4);
+            items.extend(tcp.push(&synthetic, &decoded).items);
+        }
+    }
+    items.extend(tcp.finish().items);
+    for item in &items {
+        if let TcpItem::Data(chunk) = item {
+            println!("stream {} {:?} @{}: {} bytes",
+                chunk.stream_id, chunk.direction, chunk.position, chunk.bytes.len());
+        }
+    }
+    Ok(())
+}
+```
+
 `FragmentBuffer` と `TcpSegmentBuffer` は，protocol 適合試験から方針適用後の buffer を直接調べるための API です．`interval_count` と `allocated_bytes` で区間数と決定的な memory 上限用の見積りを調べられます．`packet_tools::flow` の `FlowIdentityKey::normalized` と `flow_uid` を再構成側も共有するので，`IdleOnly` flow と TCP 接続は，同じ最初の packet 時刻から同じ識別子を作ります．
 
 ## アプリ層の解析（`packet_tools::app`）

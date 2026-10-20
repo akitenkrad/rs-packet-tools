@@ -158,6 +158,56 @@ The complete schemas and policy-sensitive features are listed in [Flow columns](
 
 `TcpReassembler::push` accepts ordinary decoded TCP packets or a decoded completed datagram. Its `TcpItem` output is `Start`, `Data`, `Gap`, `PostClose` or `End`. A `StreamChunk` carries connection ID, direction, zero-based stream position, `Arc<[u8]>`, and source ranges containing the original packet index and timestamp. `source_at` looks up the packet that supplied a byte. `DeliveryMode::OnAck` is the default; `Immediate` emits each contiguous prefix immediately. TCP payload is stored in an ordered range map. Split ranges refer to subranges of a shared segment allocation, so inserting an overlap neither rebuilds the range list nor copies unaffected payload. Each backing allocation receives an input-order identifier; addresses are not used for accounting or range merging. Delivered payload is discarded except for at most the most recent 1 MiB per direction (and no more than half of `stream_memory`) used to detect late conflicting overlaps. This history, shared payload bytes, and logical range metadata are charged to both memory limits; `TcpReassembler::estimated_memory_bytes` exposes the current capacity-independent estimate. `PostClose` is a statistics-only notification: after an accepted RST or completed two-sided FIN close, the connection remains as a tombstone for `TcpConfig::closing_timeout`; later non-SYN packets are counted but never emitted as `Data`. A SYN without ACK replaces the tombstone, while expiry permits a later packet to start a midstream connection. Zero- or one-byte keepalives at `next_expected - 1` are counted in `DirectionSummary::keepalives` and bypass buffering and overlap detection. Call `finish()` at capture end.
 
+The following loop chains both stages the same way the `streams` and `app` commands do. Fragmented packets go only to the `Defragmenter`; every completed datagram is decoded as raw IP and passed to the `TcpReassembler` as a packet of its own.
+
+```rust
+use packet_tools::capture::{Capture, LinkType, PacketRecord};
+use packet_tools::dissect::{decode, DecodeDepth, Ipv4View, Ipv6View};
+use packet_tools::reassembly::{DefragConfig, Defragmenter, TcpConfig, TcpItem, TcpReassembler};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut capture = Capture::open("capture.pcap")?;
+    let mut defrag = Defragmenter::new(DefragConfig::default());
+    let mut tcp = TcpReassembler::new(TcpConfig::default());
+    let mut items = Vec::new();
+    while let Some(record) = capture.next_record() {
+        let record = record?;
+        let packet = decode(record.data, record.linktype, DecodeDepth::L4);
+        let fragmented = packet
+            .layer::<Ipv4View>()
+            .is_some_and(|ip| ip.more_fragments() || ip.fragment_offset() != 0)
+            || packet.layer::<Ipv6View>().is_some_and(|ip| ip.fragment().is_some());
+        let output = defrag.push(&record, &packet);
+        if !fragmented {
+            items.extend(tcp.push(&record, &packet).items);
+        }
+        // A completed datagram is raw IP; decode it and pass it on as one packet.
+        for datagram in output.datagrams {
+            let len = datagram.bytes.len() as u32;
+            let synthetic = PacketRecord {
+                index: datagram.last_index,
+                ts_ns: Some(datagram.last_ts_ns),
+                caplen: len,
+                origlen: len,
+                linktype: LinkType(101),
+                interface: 0,
+                data: &datagram.bytes,
+            };
+            let decoded = decode(synthetic.data, synthetic.linktype, DecodeDepth::L4);
+            items.extend(tcp.push(&synthetic, &decoded).items);
+        }
+    }
+    items.extend(tcp.finish().items);
+    for item in &items {
+        if let TcpItem::Data(chunk) = item {
+            println!("stream {} {:?} @{}: {} bytes",
+                chunk.stream_id, chunk.direction, chunk.position, chunk.bytes.len());
+        }
+    }
+    Ok(())
+}
+```
+
 `FragmentBuffer` and `TcpSegmentBuffer` expose the target-policy buffer state directly for protocol conformance tests. Their `interval_count` and `allocated_bytes` methods expose the range count and deterministic memory-limit estimate. `FlowIdentityKey::normalized` and `flow_uid` in `packet_tools::flow` are shared with reassembly, ensuring an `IdleOnly` flow and its TCP connection use the same identifier and first-packet timestamp.
 
 ## Application parsing (`packet_tools::app`)

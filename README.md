@@ -6,7 +6,7 @@
 
 `packet-tools` is a Rust library and CLI for fast offline analysis of PCAP and pcapng captures. It is meant as a fast alternative to Scapy for research workloads such as intrusion-detection datasets: it extracts per-packet fields, builds bidirectional flows with configurable termination rules and flow features, reassembles IP fragments and TCP streams, parses application-layer protocols (DNS, HTTP/1.x, TLS, FTP, SSH, SMTP, Telnet), and writes the results to Parquet or CSV.
 
-> **Status: early development (M6).** Capture reading, L2–L4 packet export, bidirectional flow tables, CICFlowMeter-compatible flow features, IP/TCP reassembly, application parsing, and file-level parallel processing are implemented. See [Architecture](docs/architecture.md) for the plan.
+> **Status:** all features planned for the first release (milestones M0–M6) are implemented: capture reading, L2–L4 packet export, bidirectional flow tables, CICFlowMeter-compatible flow features, IP/TCP reassembly, application parsing, and file-level parallel processing. The crates are not published to crates.io yet.
 
 ## Install
 
@@ -21,18 +21,13 @@ cargo run -p packet-tools -- --version
 
 ## Documentation
 
-- [CLI](docs/cli.md): the `packet-tools` command
+- [CLI](docs/cli.md): the `packet-tools` command, including [multiple inputs and `--jobs`](docs/cli.md#multiple-inputs)
 - [Library](docs/library.md): reading and decoding captures from Rust
 - [Flow columns](docs/flows-columns.md): flow schemas and CICFlowMeter name mapping
 - [Application tables](docs/app-tables.md): application-layer output schemas
+- [Performance](docs/performance.md): measured throughput against Scapy, end-to-end runs and parallel speed-up
 - [Architecture](docs/architecture.md): crate layout, design principles and milestones
 - [Development](docs/development.md): tests, synthetic fixtures, CI and benchmarks
-
-## M6 changes
-
-All five CLI subcommands accept one or more captures and `--jobs N`. With one input, output paths and behavior remain unchanged. With multiple inputs, `packets`, `flows`, `streams`, and `app` preserve the path below the inputs' longest common parent under `-o` and record the ordered result list in `inputs.csv`.
-
-The default `packets` schema now ends with `flow_uid`. It is assigned by the same policy-sensitive `FlowTable` state machine used by `flows`; selecting fields without `flow_uid` avoids that work. See the [CLI reference](docs/cli.md#multiple-inputs) for layouts and failure semantics.
 
 ## License
 

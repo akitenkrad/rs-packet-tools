@@ -51,11 +51,19 @@ pcapng のほうは，2 つ目のインターフェースに raw IP のパケッ
 
 `tests/fixtures/manifest.json` がこれらのファイルの正解表です．パケットごとに，ナノ秒の時刻，キャプチャ長と元の長さ，リンク種別，インターフェースを記録しています．試験では，2 つの独立した読み込み実装（`pcap-file` と `pcap-parser`）でファイルを読み直し，正解表と照合します．Wireshark の `tshark` でも，6 ファイルすべてがエラーなしで解読されることを確かめています．
 
-実データを使う試験は，データセットのパスを環境変数で受け取ります．変数が無ければ，その試験は飛ばします．
+後段の試験用に，さらに 3 つのディレクトリにシナリオのキャプチャがあります．それぞれの README に，何を網羅しているかを書いています．
+
+| ディレクトリ | 中身 |
+|---|---|
+| `tests/fixtures/flows/` | `scenarios.pcap` と，2 つの CICFlowMeter の参照実装がそこから作ったフロー CSV（`scenarios.cicflowmeter-9d91f72.csv`，`scenarios.corrected-13a0615.csv`）．CSV は外部の参照出力なので，生成プログラムが書き換えてはいけない |
+| `tests/fixtures/reassembly/` | `scenarios.pcap` と，Sturges & Novak の重なり試験の入力と期待値を収めた `sturges_novak_ip.json`，`sturges_novak_tcp.json` |
+| `tests/fixtures/app/` | DNS，HTTP，TLS，FTP，SSH，SMTP，Telnet を含む `scenarios.pcap`．`tshark` で確かめてある |
+
+実データを使う試験は，パスを環境変数で受け取ります．変数が無ければ，その試験は飛ばします．`PACKET_TOOLS_CFM_REF` には，`in/` にキャプチャ，`orig/`（ahlashkari 版）と `engelen/`（GintsEngelen 版）に対応する CICFlowMeter の出力を置いたディレクトリを指定します．試験は両方の方針の結果をそれらの CSV と比べます．`PACKET_TOOLS_CFM_DAY` には 1 日分のキャプチャを 1 つ指定し，フロー表のメモリ使用量を確かめます．
 
 ## ベンチマーク
 
-`bench/` では，Scapy と最小限の Rust の比較対象（`bench/rsbench`．`pcap-file` と `etherparse` で作った試作）を同じ処理で比べます．処理は，全パケットを読み，IPv4 のバイト数を 5 タプルごとに足し合わせるものです．詳しい手順は [`bench/README.md`](../bench/README.md)（英語）にあります．要点は次のとおりです．
+`bench/` では，Scapy と最小限の Rust の比較対象（`bench/rsbench`．`pcap-file` と `etherparse` で作った試作）を同じ処理で比べます．処理は，全パケットを読み，IPv4 のバイト数を 5 タプルごとに足し合わせるものです．`rsbench --engine packet-tools` は同じ処理を `packet_tools::capture` と `packet_tools::dissect` で行います．既定は `--engine etherparse` です．詳しい手順は [`bench/README.ja.md`](../bench/README.ja.md) にあります．要点は次のとおりです．
 
 ```sh
 export PACKET_TOOLS_DARPA99=/path/to/inside.tcpdump.gz
@@ -63,22 +71,6 @@ export PACKET_TOOLS_CIC17=/path/to/Wednesday-workingHours.pcap
 bash bench/run.sh
 ```
 
-このスクリプトは，それぞれのキャプチャの先頭を切り出し，`uv` で作った仮想環境に Scapy 2.8.0 を入れ，両方を実行して結果を Markdown の表で出力します．
+このスクリプトは，それぞれのキャプチャの先頭を切り出し，`uv` で作った仮想環境に Scapy 2.8.0 を入れ，両方を実行して結果を Markdown の表で出力します．独立 crate の `bench/ptbench` は，解析部分の速度と端から端までの計測を runvault の run として記録します．[runvault に記録する計測](../bench/README.ja.md#runvault-に記録する計測)を参照してください．
 
-Apple Silicon の Mac で，切り出したファイルがページキャッシュに載った状態での結果です．
-
-| 切り出したデータ | Scapy（読むだけ） | Scapy（全層を解析） | Rust の比較対象 |
-|---|---:|---:|---:|
-| DARPA 1999 の先頭 100 MB（旧形式 PCAP，平均 213 バイト/パケット） | 176 万 pkt/s | 10,895 pkt/s | 1,910 万 pkt/s |
-| CIC-IDS-2017 水曜の先頭 300 MB（pcapng，約 1.3 KB/パケット） | 63 万 pkt/s | 13,385 pkt/s | 568 万 pkt/s |
-
-`rsbench` に `--engine packet-tools` を付けると，同じ処理を packet-tools（`packet_tools::capture` と `packet_tools::dissect`）で行います．既定は `--engine etherparse` です．2 つの engine の順番を入れ替えながら各 9 回測った中央値です（切り出したファイルはページキャッシュ上）．
-
-| 切り出したデータ | `--engine etherparse` | `--engine packet-tools` |
-|---|---:|---:|
-| DARPA 1999 の先頭 100 MB | 2,200 万 pkt/s | 2,340 万 pkt/s |
-| CIC-IDS-2017 水曜の先頭 300 MB | 781 万 pkt/s | 894 万 pkt/s |
-
-1 回の実行は数十ミリ秒と短いので，ほかに負荷の無い状態で測り，中央値で比べてください．
-
-CIC-IDS-2017 の 1 日分をまるごと外付けディスクから読む場合は，Rust の比較対象は CPU ではなくディスクの速度（私たちの環境では約 110 MB/s）で頭打ちになります．
+切り出したファイルでの 1 回の実行は数十ミリ秒と短いので，ほかに負荷の無い状態で測り，中央値で比べてください．計測結果は[性能](performance.ja.md)にあります．

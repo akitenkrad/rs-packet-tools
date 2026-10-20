@@ -10,8 +10,12 @@ Commands:
   packets   Export one row per packet to Parquet or CSV
   flows     Build bidirectional flows and export one row per completed flow
   streams   Reassemble IP fragments and directional TCP byte streams
-  app       Parse application events from reassembled TCP and UDP
+  app       Parse reassembled streams and UDP datagrams into application-layer tables
   help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ## Multiple inputs
@@ -22,7 +26,7 @@ With two or more inputs, `-o` is an output directory. It is created when absent 
 
 Each directory contains `packets.<ext>`, `flows.<ext>`, all three of `streams.<ext>`, `events.<ext>`, and `datagrams.<ext>`, or the normal `app` table set. Multiple-input `streams` rejects `--events`, `--datagrams`, and `--dump-dir`. Duplicate inputs are rejected. `OUT/inputs.csv` records `input_id,input,output_dir,packets,status,error` in argument order. A failed input does not stop the others; after all workers finish, failures are listed on standard error and the process exits with status 1.
 
-`--memory`, `--app-memory`, and `--stream-memory` are limits per job. Approximate total memory can therefore be up to `N` times the selected per-job limits with `--jobs N`.
+`--memory`, `--app-memory`, and `--stream-memory` are limits per job. Approximate total memory can therefore be up to `N` times the selected per-job limits with `--jobs N`. Measured speed-ups and memory use are listed in [Performance](performance.md#file-level-parallelism).
 
 ## `validate`
 
@@ -35,9 +39,10 @@ Arguments:
   <FILES>...  Capture files to validate
 
 Options:
-      --json  Emit one JSON object per line
-      --mmap  Memory-map uncompressed regular files instead of reading them through a buffer
+      --json         Emit one JSON object per line
+      --mmap         Memory-map uncompressed regular files instead of reading them through a buffer
       --jobs <JOBS>  Number of capture files to process concurrently [default: 1]
+  -h, --help         Print help
 ```
 
 The format is detected from the leading bytes, so a pcapng file named `*.pcap` and a gzip-compressed capture are both handled. Supported inputs: classic PCAP (little- or big-endian, microsecond or nanosecond timestamps), pcapng (any number of sections and interfaces), and either of them compressed with gzip.
@@ -75,16 +80,17 @@ Arguments:
   <INPUTS>...  Input captures
 
 Options:
-      --fields <FIELDS>  Comma-separated output column names
-      --format <FORMAT>  Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
-      --limit <LIMIT>    Write at most this many packets
-      --depth <DEPTH>    Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
-      --policy <POLICY>  Flow policy for flow_uid [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
-      --flow-timeout <SECONDS>  [default: 120]
-      --idle-timeout <SECONDS>  [default: 60]
-      --vlan-in-key
-      --jobs <JOBS>      Number of capture files to process concurrently [default: 1]
-  -o, --output <OUTPUT>  Output file
+      --fields <FIELDS>              Comma-separated output column names
+      --format <FORMAT>              Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --limit <LIMIT>                Write at most this many packets
+      --depth <DEPTH>                Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
+      --policy <POLICY>              Flow grouping and termination policy used by flow_uid [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --flow-timeout <FLOW_TIMEOUT>  Maximum flow age in seconds for compatibility policies [default: 120]
+      --idle-timeout <IDLE_TIMEOUT>  IdleOnly expiration in seconds [default: 60]
+      --vlan-in-key                  Include the outermost VLAN identifier in IdleOnly flow keys
+      --jobs <JOBS>                  Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>              Output file, or output directory for multiple inputs
+  -h, --help                         Print help
 ```
 
 ```sh
@@ -127,7 +133,7 @@ Parquet files are compressed with Snappy. In CSV, missing values are empty and b
 | `malformed` | Utf8 | Where decoding stopped on a broken header, as `<layer>:<kind>@<offset>` (for example `ipv4:bad_length@14`) |
 | `flow_uid` | UInt64 | Identifier of the policy-selected flow that accepted the packet; null for discarded packets |
 
-`flow_uid` is the last default column. It is produced by passing packets through the same `FlowTable` configuration as `flows`, so policy and timeout choices can change it. When `--fields` does not select `flow_uid`, no flow table is created. Under `cicflowmeter`, accepted one-packet flows are omitted from the `flows` output for compatibility; their packet rows can therefore contain a `flow_uid` that has no corresponding flow row.
+`flow_uid` is the last default column. It is produced by passing packets through the same `FlowTable` configuration as `flows`, so policy and timeout choices can change it. When `--fields` does not select `flow_uid`, no flow table is created; [Performance](performance.md#cost-of-flow_uid-in-packets) shows what the flow table costs. Under `cicflowmeter`, accepted one-packet flows are omitted from the `flows` output for compatibility; their packet rows can therefore contain a `flow_uid` that has no corresponding flow row.
 
 How lengths and fragments are handled:
 
@@ -148,15 +154,28 @@ Arguments:
   <INPUTS>...  Input captures
 
 Options:
-      --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
-      --preset <PRESET>                      [default: cicflowmeter] [possible values: cicflowmeter, minimal]
-      --flow-timeout <FLOW_TIMEOUT>          [default: 120]
-      --activity-timeout <ACTIVITY_TIMEOUT>  [default: 5]
-      --idle-timeout <IDLE_TIMEOUT>          [default: 60]
+      --policy <POLICY>
+          Flow grouping and termination policy [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --preset <PRESET>
+          Output feature preset [default: cicflowmeter] [possible values: cicflowmeter, minimal]
+      --flow-timeout <FLOW_TIMEOUT>
+          Maximum flow age in seconds for compatibility policies [default: 120]
+      --activity-timeout <ACTIVITY_TIMEOUT>
+          Gap in seconds used for Active/Idle feature statistics [default: 5]
+      --idle-timeout <IDLE_TIMEOUT>
+          IdleOnly expiration in seconds [default: 60]
       --vlan-in-key
-      --column-names <COLUMN_NAMES>          [default: snake] [possible values: snake, original]
-      --format <FORMAT>                      [possible values: parquet, csv]
-  -o, --output <OUTPUT>                      Output file
+          Include the outermost VLAN identifier in IdleOnly flow keys
+      --column-names <COLUMN_NAMES>
+          Output column naming convention [default: snake] [possible values: snake, original]
+      --format <FORMAT>
+          Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --jobs <JOBS>
+          Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>
+          Output file, or output directory for multiple inputs
+  -h, --help
+          Print help
 ```
 
 ```sh
@@ -195,21 +214,28 @@ Reassembles IPv4/IPv6 fragments, decodes completed raw-IP datagrams, and reconst
 ```text
 Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
+Arguments:
+  <INPUTS>...
+
 Options:
-      --ip-policy <IP_POLICY>          [default: bsd]
-      --tcp-policy <TCP_POLICY>        [default: bsd]
-      --delivery <DELIVERY>            [default: on-ack] [possible values: on-ack, immediate]
-      --defrag-timeout <SECONDS>       [default: 60]
-      --tcp-timeout <SECONDS>          [default: 3600]
-      --stream-memory <BYTES>          [default: 4194304]
-      --memory <BYTES>                 [default: 1073741824]
+      --ip-policy <IP_POLICY>            [default: bsd]
+      --tcp-policy <TCP_POLICY>          [default: bsd]
+      --delivery <DELIVERY>              [default: on-ack] [possible values: on-ack, immediate]
+      --defrag-timeout <DEFRAG_TIMEOUT>  [default: 60]
+      --tcp-timeout <TCP_TIMEOUT>        [default: 3600]
+      --stream-memory <STREAM_MEMORY>    [default: 4194304]
+      --memory <MEMORY>                  [default: 1073741824]
       --vlan-in-key
-      --events <FILE>
-      --datagrams <FILE>
-      --dump-dir <DIRECTORY>
-      --format <FORMAT>                [possible values: parquet, csv]
+      --events <EVENTS>
+      --datagrams <DATAGRAMS>
+      --dump-dir <DUMP_DIR>
+      --format <FORMAT>                  [possible values: parquet, csv]
+      --jobs <JOBS>                      [default: 1]
   -o, --output <OUTPUT>
+  -h, --help                             Print help
 ```
+
+`--defrag-timeout` and `--tcp-timeout` are in seconds, and `--stream-memory` and `--memory` are in bytes. `-o` names the stream table; `--events` and `--datagrams` name the optional event and datagram tables, and `--dump-dir` a directory for the delivered bytes.
 
 ```sh
 packet-tools streams --tcp-policy linux --events overlap.csv --datagrams datagrams.csv \
@@ -237,16 +263,23 @@ Reassembles IP fragments and TCP streams, parses application events, and writes 
 ```text
 Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
+Arguments:
+  <INPUTS>...
+
 Options:
-      --ip-policy <IP_POLICY>      [default: bsd]
-      --tcp-policy <TCP_POLICY>    [default: bsd]
-      --delivery <DELIVERY>        [default: on-ack] [possible values: on-ack, immediate]
-      --memory <BYTES>             [default: 1073741824]
-      --app-memory <BYTES>         [default: 268435456]
-      --protocols <PROTOCOLS>      [default: dns,http,tls,ftp,ssh,smtp,telnet]
-      --format <FORMAT>            [default: parquet] [possible values: parquet, csv]
-  -o, --output <OUTPUT>            Output directory
+      --ip-policy <IP_POLICY>    [default: bsd]
+      --tcp-policy <TCP_POLICY>  [default: bsd]
+      --delivery <DELIVERY>      [default: on-ack] [possible values: on-ack, immediate]
+      --memory <MEMORY>          Maximum retained TCP reassembly memory in bytes [default: 1073741824]
+      --app-memory <APP_MEMORY>  Maximum application probe and parser buffer memory in bytes [default: 268435456]
+      --protocols <PROTOCOLS>    [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>          [default: parquet] [possible values: parquet, csv]
+      --jobs <JOBS>              [default: 1]
+  -o, --output <OUTPUT>
+  -h, --help                     Print help
 ```
+
+`-o` names the output directory. `--memory` and `--app-memory` are in bytes, and `--protocols` is a comma-separated subset of the default list.
 
 ```sh
 packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pcapng

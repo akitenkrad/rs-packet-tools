@@ -37,11 +37,19 @@ The classic captures hold the same 19 Ethernet frames: a TCP handshake, an HTTP/
 
 `tests/fixtures/manifest.json` is the ground truth for these files: for every packet it records the timestamp in nanoseconds, captured and original length, link type and interface. The fixture tests read the files back with two independent readers, `pcap-file` and `pcap-parser`, and compare them with the manifest. Wireshark's `tshark` decodes all six files without errors.
 
-Tests that need real datasets will read their paths from environment variables and are skipped when the variables are not set.
+Three more directories hold scenario captures for the later stages, each with a README describing what it covers:
+
+| Directory | Contents |
+|---|---|
+| `tests/fixtures/flows/` | `scenarios.pcap` and the flow CSVs that the two CICFlowMeter reference implementations produced from it (`scenarios.cicflowmeter-9d91f72.csv`, `scenarios.corrected-13a0615.csv`). The CSVs are external reference outputs; the generator must not rewrite them |
+| `tests/fixtures/reassembly/` | `scenarios.pcap`, plus `sturges_novak_ip.json` and `sturges_novak_tcp.json` with the inputs and expected results of the Sturges & Novak overlap tests |
+| `tests/fixtures/app/` | `scenarios.pcap` covering DNS, HTTP, TLS, FTP, SSH, SMTP and Telnet, checked against `tshark` |
+
+Tests that need real data read their paths from environment variables and are skipped when the variables are not set. `PACKET_TOOLS_CFM_REF` names a directory with captures in `in/` and the matching CICFlowMeter output in `orig/` (ahlashkari) and `engelen/` (GintsEngelen); the test compares both policies with those CSVs. `PACKET_TOOLS_CFM_DAY` names one full-day capture used to check the flow table's memory use.
 
 ## Benchmarks
 
-`bench/` compares Scapy with a minimal Rust baseline (`bench/rsbench`, built on `pcap-file` and `etherparse`) on the same task: read every packet and aggregate IPv4 bytes per 5-tuple. See [`bench/README.md`](../bench/README.md) for the full procedure. In short:
+`bench/` compares Scapy with a minimal Rust baseline (`bench/rsbench`, built on `pcap-file` and `etherparse`) on the same task: read every packet and aggregate IPv4 bytes per 5-tuple. `rsbench --engine packet-tools` runs the same task on `packet_tools::capture` and `packet_tools::dissect`; the default is `--engine etherparse`. See [`bench/README.md`](../bench/README.md) for the full procedure. In short:
 
 ```sh
 export PACKET_TOOLS_DARPA99=/path/to/inside.tcpdump.gz
@@ -49,22 +57,6 @@ export PACKET_TOOLS_CIC17=/path/to/Wednesday-workingHours.pcap
 bash bench/run.sh
 ```
 
-The script cuts a sample from each capture, installs Scapy 2.8.0 into a local virtual environment with `uv`, runs both programs and prints a Markdown table.
+The script cuts a sample from each capture, installs Scapy 2.8.0 into a local virtual environment with `uv`, runs both programs and prints a Markdown table. The standalone crate `bench/ptbench` records the parsing-speed and end-to-end measurements as runvault runs; see [Recorded benchmark runs](../bench/README.md#recorded-benchmark-runs).
 
-Results on an Apple Silicon Mac, with the samples in the page cache:
-
-| Sample | Scapy, read only | Scapy, full dissection | Rust baseline |
-|---|---:|---:|---:|
-| DARPA 1999, first 100 MB (classic PCAP, 213 bytes per packet on average) | 1.76 M pkt/s | 10,895 pkt/s | 19.1 M pkt/s |
-| CIC-IDS-2017 Wednesday, first 300 MB (pcapng, about 1.3 KB per packet) | 0.63 M pkt/s | 13,385 pkt/s | 5.68 M pkt/s |
-
-`rsbench` also runs the same task on packet-tools (`packet_tools::capture` and `packet_tools::dissect`) with `--engine packet-tools`; the default is `--engine etherparse`. Medians of 9 runs per engine, with the order of the two engines alternated and the samples in the page cache:
-
-| Sample | `--engine etherparse` | `--engine packet-tools` |
-|---|---:|---:|
-| DARPA 1999, first 100 MB | 22.0 M pkt/s | 23.4 M pkt/s |
-| CIC-IDS-2017 Wednesday, first 300 MB | 7.81 M pkt/s | 8.94 M pkt/s |
-
-Each run takes only a few tens of milliseconds, so measure on an otherwise idle machine and compare medians.
-
-When a whole CIC-IDS-2017 day is read from an external disk instead, the Rust baseline is limited by the disk (about 110 MB/s in our setup), not by the CPU.
+Each run on a sample takes only a few tens of milliseconds, so measure on an otherwise idle machine and compare medians. The measured results are in [Performance](performance.md).

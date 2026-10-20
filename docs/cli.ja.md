@@ -10,8 +10,12 @@ Commands:
   packets   Export one row per packet to Parquet or CSV
   flows     Build bidirectional flows and export one row per completed flow
   streams   Reassemble IP fragments and directional TCP byte streams
-  app       Parse application events from reassembled TCP and UDP
+  app       Parse reassembled streams and UDP datagrams into application-layer tables
   help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ## 複数入力
@@ -22,7 +26,7 @@ Commands:
 
 各ディレクトリには，`packets.<ext>`，`flows.<ext>`，`streams.<ext>` と `events.<ext>` と `datagrams.<ext>` の 3 表，または通常の `app` 表一式を書きます．複数入力の `streams` では `--events`，`--datagrams`，`--dump-dir` を指定できません．同じ入力の重複もエラーです．`OUT/inputs.csv` は `input_id,input,output_dir,packets,status,error` を引数の順に記録します．1 入力が失敗しても残りを処理し，すべてのワーカーが終わった後で失敗一覧を標準エラーへ出し，終了コード 1 を返します．
 
-`--memory`，`--app-memory`，`--stream-memory` はジョブごとの上限です．したがって `--jobs N` の全体では，選んだジョブ単位の上限のおよそ N 倍まで使うことがあります．
+`--memory`，`--app-memory`，`--stream-memory` はジョブごとの上限です．したがって `--jobs N` の全体では，選んだジョブ単位の上限のおよそ N 倍まで使うことがあります．計測した短縮率とメモリ使用量は[性能](performance.ja.md#ファイル単位の並列)にあります．
 
 ## `validate`
 
@@ -35,9 +39,10 @@ Arguments:
   <FILES>...  Capture files to validate
 
 Options:
-      --json  Emit one JSON object per line
-      --mmap  Memory-map uncompressed regular files instead of reading them through a buffer
-      --jobs <JOBS>  同時に処理するキャプチャ数 [default: 1]
+      --json         Emit one JSON object per line
+      --mmap         Memory-map uncompressed regular files instead of reading them through a buffer
+      --jobs <JOBS>  Number of capture files to process concurrently [default: 1]
+  -h, --help         Print help
 ```
 
 形式は先頭のバイトで判定するので，`*.pcap` という名前の pcapng ファイルも，gzip で圧縮したキャプチャもそのまま扱えます．対応する入力は，旧形式の PCAP（リトルエンディアンとビッグエンディアン，マイクロ秒とナノ秒），pcapng（セクションとインターフェースの数は問わない），およびそれらを gzip で圧縮したものです．
@@ -75,16 +80,17 @@ Arguments:
   <INPUTS>...  Input captures
 
 Options:
-      --fields <FIELDS>  Comma-separated output column names
-      --format <FORMAT>  Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
-      --limit <LIMIT>    Write at most this many packets
-      --depth <DEPTH>    Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
-      --policy <POLICY>  flow_uid に使うフロー方針 [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
-      --flow-timeout <SECONDS>  [default: 120]
-      --idle-timeout <SECONDS>  [default: 60]
-      --vlan-in-key
-      --jobs <JOBS>      同時に処理するキャプチャ数 [default: 1]
-  -o, --output <OUTPUT>  Output file
+      --fields <FIELDS>              Comma-separated output column names
+      --format <FORMAT>              Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --limit <LIMIT>                Write at most this many packets
+      --depth <DEPTH>                Deepest layer to decode [default: l4] [possible values: l2, l3, l4]
+      --policy <POLICY>              Flow grouping and termination policy used by flow_uid [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --flow-timeout <FLOW_TIMEOUT>  Maximum flow age in seconds for compatibility policies [default: 120]
+      --idle-timeout <IDLE_TIMEOUT>  IdleOnly expiration in seconds [default: 60]
+      --vlan-in-key                  Include the outermost VLAN identifier in IdleOnly flow keys
+      --jobs <JOBS>                  Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>              Output file, or output directory for multiple inputs
+  -h, --help                         Print help
 ```
 
 ```sh
@@ -127,7 +133,7 @@ Parquet は Snappy で圧縮します．CSV では，値が無いところは空
 | `malformed` | Utf8 | 壊れたヘッダで解析が止まった位置．`<layer>:<kind>@<offset>` の形（例 `ipv4:bad_length@14`） |
 | `flow_uid` | UInt64 | 選んだ方針でパケットを受け入れたフローの識別子．数えないパケットは null |
 
-`flow_uid` は既定列の最後です．`flows` と同じ設定の `FlowTable` にパケットを通して作るため，方針とタイムアウトによって値が変わります．`--fields` で `flow_uid` を選ばなければ，フロー表を作りません．`cicflowmeter` は互換性のため，受理した 1 パケットだけのフローを `flows` に出しません．そのため，対応するフロー行がない `flow_uid` を packets 行が持つことがあります．
+`flow_uid` は既定列の最後です．`flows` と同じ設定の `FlowTable` にパケットを通して作るため，方針とタイムアウトによって値が変わります．`--fields` で `flow_uid` を選ばなければ，フロー表を作りません．フロー表にかかる費用は[性能](performance.ja.md#packets-の-flow_uid-にかかる費用)を参照してください．`cicflowmeter` は互換性のため，受理した 1 パケットだけのフローを `flows` に出しません．そのため，対応するフロー行がない `flow_uid` を packets 行が持つことがあります．
 
 長さとフラグメントの扱い:
 
@@ -148,15 +154,28 @@ Arguments:
   <INPUTS>...  Input captures
 
 Options:
-      --policy <POLICY>                      [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
-      --preset <PRESET>                      [default: cicflowmeter] [possible values: cicflowmeter, minimal]
-      --flow-timeout <FLOW_TIMEOUT>          [default: 120]
-      --activity-timeout <ACTIVITY_TIMEOUT>  [default: 5]
-      --idle-timeout <IDLE_TIMEOUT>          [default: 60]
+      --policy <POLICY>
+          Flow grouping and termination policy [default: corrected] [possible values: corrected, cicflowmeter, idle-only]
+      --preset <PRESET>
+          Output feature preset [default: cicflowmeter] [possible values: cicflowmeter, minimal]
+      --flow-timeout <FLOW_TIMEOUT>
+          Maximum flow age in seconds for compatibility policies [default: 120]
+      --activity-timeout <ACTIVITY_TIMEOUT>
+          Gap in seconds used for Active/Idle feature statistics [default: 5]
+      --idle-timeout <IDLE_TIMEOUT>
+          IdleOnly expiration in seconds [default: 60]
       --vlan-in-key
-      --column-names <COLUMN_NAMES>          [default: snake] [possible values: snake, original]
-      --format <FORMAT>                      [possible values: parquet, csv]
-  -o, --output <OUTPUT>                      出力ファイル
+          Include the outermost VLAN identifier in IdleOnly flow keys
+      --column-names <COLUMN_NAMES>
+          Output column naming convention [default: snake] [possible values: snake, original]
+      --format <FORMAT>
+          Output format; inferred from .parquet or .csv when omitted [possible values: parquet, csv]
+      --jobs <JOBS>
+          Number of capture files to process concurrently [default: 1]
+  -o, --output <OUTPUT>
+          Output file, or output directory for multiple inputs
+  -h, --help
+          Print help
 ```
 
 ```sh
@@ -181,21 +200,28 @@ IPv4／IPv6 フラグメントを再び組み立て，完成した raw IP を解
 ```text
 Usage: packet-tools streams [OPTIONS] --output <OUTPUT> <INPUTS>...
 
+Arguments:
+  <INPUTS>...
+
 Options:
-      --ip-policy <IP_POLICY>          [default: bsd]
-      --tcp-policy <TCP_POLICY>        [default: bsd]
-      --delivery <DELIVERY>            [default: on-ack] [possible values: on-ack, immediate]
-      --defrag-timeout <SECONDS>       [default: 60]
-      --tcp-timeout <SECONDS>          [default: 3600]
-      --stream-memory <BYTES>          [default: 4194304]
-      --memory <BYTES>                 [default: 1073741824]
+      --ip-policy <IP_POLICY>            [default: bsd]
+      --tcp-policy <TCP_POLICY>          [default: bsd]
+      --delivery <DELIVERY>              [default: on-ack] [possible values: on-ack, immediate]
+      --defrag-timeout <DEFRAG_TIMEOUT>  [default: 60]
+      --tcp-timeout <TCP_TIMEOUT>        [default: 3600]
+      --stream-memory <STREAM_MEMORY>    [default: 4194304]
+      --memory <MEMORY>                  [default: 1073741824]
       --vlan-in-key
-      --events <FILE>
-      --datagrams <FILE>
-      --dump-dir <DIRECTORY>
-      --format <FORMAT>                [possible values: parquet, csv]
+      --events <EVENTS>
+      --datagrams <DATAGRAMS>
+      --dump-dir <DUMP_DIR>
+      --format <FORMAT>                  [possible values: parquet, csv]
+      --jobs <JOBS>                      [default: 1]
   -o, --output <OUTPUT>
+  -h, --help                             Print help
 ```
+
+`--defrag-timeout` と `--tcp-timeout` は秒，`--stream-memory` と `--memory` はバイト単位です．`-o` はストリーム表の出力先です．`--events` と `--datagrams` は省略可能な事象表とデータグラム表の出力先，`--dump-dir` は配送したバイト列を保存するディレクトリです．
 
 ```sh
 packet-tools streams --tcp-policy linux --events overlap.csv --datagrams datagrams.csv \
@@ -223,16 +249,23 @@ IP フラグメントと TCP ストリームを再構成し，アプリ層の事
 ```text
 Usage: packet-tools app [OPTIONS] --output <OUTPUT> <INPUTS>...
 
+Arguments:
+  <INPUTS>...
+
 Options:
-      --ip-policy <IP_POLICY>      [default: bsd]
-      --tcp-policy <TCP_POLICY>    [default: bsd]
-      --delivery <DELIVERY>        [default: on-ack] [possible values: on-ack, immediate]
-      --memory <BYTES>             [default: 1073741824]
-      --app-memory <BYTES>         [default: 268435456]
-      --protocols <PROTOCOLS>      [default: dns,http,tls,ftp,ssh,smtp,telnet]
-      --format <FORMAT>            [default: parquet] [possible values: parquet, csv]
-  -o, --output <OUTPUT>            出力ディレクトリ
+      --ip-policy <IP_POLICY>    [default: bsd]
+      --tcp-policy <TCP_POLICY>  [default: bsd]
+      --delivery <DELIVERY>      [default: on-ack] [possible values: on-ack, immediate]
+      --memory <MEMORY>          Maximum retained TCP reassembly memory in bytes [default: 1073741824]
+      --app-memory <APP_MEMORY>  Maximum application probe and parser buffer memory in bytes [default: 268435456]
+      --protocols <PROTOCOLS>    [default: dns,http,tls,ftp,ssh,smtp,telnet]
+      --format <FORMAT>          [default: parquet] [possible values: parquet, csv]
+      --jobs <JOBS>              [default: 1]
+  -o, --output <OUTPUT>
+  -h, --help                     Print help
 ```
+
+`-o` は出力ディレクトリです．`--memory` と `--app-memory` はバイト単位，`--protocols` は既定の一覧から選んだプロトコルをカンマ区切りで並べます．
 
 ```sh
 packet-tools app --format csv --protocols dns,http,tls -o app-tables capture.pcapng

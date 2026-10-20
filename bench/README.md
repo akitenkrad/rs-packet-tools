@@ -1,3 +1,5 @@
+**English** | [日本語](README.ja.md)
+
 # Packet parsing benchmarks
 
 The benchmark compares Scapy with the standalone Rust baseline in `bench/rsbench`. Run all commands from the repository root.
@@ -27,7 +29,7 @@ uv pip install --python .venv/bin/python scapy==2.8.0
 
 ## Rust baseline
 
-The Rust program reads the complete sample and aggregates IPv4 packets by 5-tuple.
+The Rust program reads the complete sample and aggregates IPv4 packets by 5-tuple. It decodes with `etherparse` by default; pass `--engine packet-tools` to decode with `packet_tools::capture` and `packet_tools::dissect` instead.
 
 ```sh
 cargo run --release -p rsbench -- bench/.data/darpa99-first-100000000.pcap
@@ -74,4 +76,6 @@ cargo run --manifest-path bench/ptbench/Cargo.toml --release -- \
 
 The head-cut captures in `bench/.data/` end in a truncated record, which `flows` and `app` reject, so the example passes complete captures. Each command's CPU time and maximum RSS come from `wait4` on that command's own processes; for `rsbench` the CPU time is summed and the RSS is the largest single run.
 
-`rsbench` runs once per input; `flows` and `app` use one multi-input invocation. `sync` runs immediately before each measured command. No cache-purge or privileged operation is used. The intended 52 GB external-volume run assumes the data does not fit in the page cache. Pass `--sha256sums FILE` to copy existing SHA-256 values into runvault `Dataset` records; ptbench never hashes the 52 GB input set itself. `e2e.<command>.seconds` is the measured target's wall time, distinct from the complete run duration in `status.json`.
+`rsbench` runs once per input; `flows` and `app` use one multi-input invocation. `sync` runs immediately before each measured command. No cache-purge or privileged operation is used. The intended 52 GB external-volume run assumes the data does not fit in the page cache. Pass `--sha256sums FILE` to copy existing SHA-256 values into runvault `Dataset` records; ptbench never hashes the 52 GB input set itself. `e2e.<command>.seconds` is the measured target's wall time, distinct from the complete run duration, `duration_sec` in `status.json`.
+
+The results of these runs are summarized in [Performance](../docs/performance.md).
